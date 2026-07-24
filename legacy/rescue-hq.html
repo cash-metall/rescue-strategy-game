@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Оперативный штаб · Поиск пропавшего</title>
+<style>
+:root{
+  --bg:#0d1210; --panel:#151c17; --panel2:#1b241d; --line:#2a352c;
+  --amber:#e8a33d; --amber-dim:#a9781f; --red:#d95d4e; --green:#7fb069;
+  --txt:#d8e0d4; --mut:#8fa08e; --mono:Consolas,"Courier New",monospace;
+  --disp:"Bahnschrift SemiCondensed","Bahnschrift","Arial Narrow",Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font:13px/1.45 "Segoe UI",Arial,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+h1,h2,h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+
+/* ---------- шапка ---------- */
+#hdr{display:flex;align-items:center;gap:18px;padding:8px 14px;background:linear-gradient(180deg,#1a231c,#141b16);border-bottom:1px solid var(--line);white-space:nowrap;overflow-x:auto}
+#hdr .brand{font-family:var(--disp);font-size:17px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+#hdr .brand .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:8px;animation:blink 1.6s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.stat{display:flex;flex-direction:column;gap:1px;min-width:70px}
+.stat b{font-family:var(--mono);font-size:14px;font-weight:600}
+.stat span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+#victimWrap{min-width:150px}
+.bar{height:7px;background:#232d24;border:1px solid var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--green);transition:width .4s}
+.bar.warn i{background:var(--amber)} .bar.crit i{background:var(--red)}
+#spdRow{display:flex;gap:4px;margin-left:auto}
+#spdRow .btn{min-width:36px}
+.btn{border:1px solid var(--amber-dim);color:var(--amber);border-radius:3px;padding:4px 10px;background:#1c2118;transition:background .15s}
+.btn:hover:not(:disabled){background:#2b3322}
+.btn.on{background:var(--amber);color:#171207;border-color:var(--amber)}
+.btn.primary{background:var(--amber);color:#171207;font-weight:600}
+.btn.primary:hover:not(:disabled){background:#f4b95c}
+.btn.mini{padding:2px 7px;font-size:11px}
+.btn.danger{border-color:#8a4038;color:#e08074}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+
+/* ---------- каркас ---------- */
+#main{display:flex;height:calc(100vh - 47px)}
+#mapCol{flex:0 0 auto;display:flex;flex-direction:column;border-right:1px solid var(--line);min-width:0;min-height:0}
+#mapHdr{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line);font-size:11px;color:var(--mut);flex-wrap:wrap}
+#mapHdr .lg{display:flex;align-items:center;gap:4px}
+#mapHdr .sw{width:16px;height:16px;border-radius:2px;display:inline-block;border:1px solid rgba(255,255,255,.12);background-position:center;background-repeat:no-repeat;background-size:13px}
+#mapWrap{overflow:auto;padding:10px;flex:1 1 auto;min-height:0}
+#map{display:grid;grid-template-columns:22px repeat(12,44px);grid-template-rows:22px repeat(12,44px);gap:2px;width:max-content;transition:filter 1.2s}
+#map.night{filter:brightness(.68) saturate(.85)}
+.lbl{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--mut)}
+.cell{position:relative;border-radius:3px;cursor:pointer;border:1px solid rgba(0,0,0,.35);overflow:hidden}
+.cell:hover{filter:brightness(1.25)}
+.cell.sel{outline:2px solid var(--amber);outline-offset:-1px;z-index:2}
+.cell.far{opacity:.35;cursor:not-allowed}
+.t-forest{background:#24402c}.t-dense{background:#152a1c}.t-meadow{background:#4d5a33}
+.t-marsh{background:#2e4a44}.t-hills{background:#4a4438}.t-lake{background:#1e3a4f}.t-base{background:#3a3326}
+.cell .ter{position:absolute;left:2px;top:1px;width:15px;height:15px;background:center/contain no-repeat;opacity:.5;pointer-events:none}
+.t-forest .ter{background-image:url(images/forest.svg)}
+.t-dense  .ter{background-image:url(images/dense.svg)}
+.t-meadow .ter{background-image:url(images/meadow.svg);opacity:.62}
+.t-marsh  .ter{background-image:url(images/marsh.svg);width:19px;height:19px;opacity:.6}
+.t-hills  .ter{background-image:url(images/hills.svg);opacity:.6}
+.cell .heat{position:absolute;inset:0;background:#ff7840;opacity:0;pointer-events:none;transition:opacity .3s}
+.cell .mk{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:1px;font-size:15px;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.cell .mk .ar{color:var(--amber);font-weight:700;font-size:14px}
+.cell .mk .cd{color:#d8c877;font-size:12px}
+.cell .mk img.mkimg{width:22px;height:22px;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.85))}
+.cell .mk img.pin{width:18px;height:19px}
+.cell .mk img.trail{width:19px;height:19px;opacity:1}
+.cell .uu{position:absolute;right:1px;top:0;display:flex;flex-wrap:wrap;justify-content:flex-end;max-width:36px;pointer-events:none}
+.cell .uu img.ui{width:14px;height:14px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.95))}
+.cell .cv{position:absolute;left:0;bottom:0;width:100%;height:4px;background:rgba(0,0,0,.35)}
+.cell .cv i{display:block;height:100%;background:var(--green);opacity:.85}
+.pulse{animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+
+#cellPanel{flex:0 0 auto;overflow-y:auto;padding:10px 12px;border-top:1px solid var(--line);background:var(--panel);min-height:120px;max-height:42vh}
+#cellPanel h3{font-size:13px;color:var(--amber);margin-bottom:6px}
+.urow{display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:var(--panel2)}
+.urow label{display:flex;align-items:center;gap:8px;flex:1;cursor:pointer}
+.urow.dis{opacity:.5}
+.urow .nm{min-width:120px}
+.urow .inf{font-family:var(--mono);font-size:11px;color:var(--mut)}
+.durrow{display:flex;gap:12px;margin:8px 0;font-size:12px}
+.durrow label{display:flex;gap:5px;align-items:center;cursor:pointer}
+
+/* ---------- правая колонка ---------- */
+#side{flex:1;display:flex;flex-direction:column;min-width:380px;min-height:0}
+#tabsRow{display:flex;border-bottom:1px solid var(--line);background:var(--panel)}
+.tabbtn{flex:1;padding:8px 4px;font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:12px;color:var(--mut);border-bottom:2px solid transparent;position:relative}
+.tabbtn.on{color:var(--amber);border-bottom-color:var(--amber)}
+.tabbtn .bdg{position:absolute;top:3px;right:6px;background:var(--red);color:#fff;font-size:9px;border-radius:8px;padding:0 5px;font-family:var(--mono)}
+#tabBody{flex:1;overflow-y:auto;padding:10px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:9px 11px;margin-bottom:8px}
+.card h3{font-size:13px;color:var(--txt);display:flex;align-items:center;gap:7px}
+.card .lvl{color:var(--amber);font-family:var(--mono);font-size:11px}
+.card p{color:var(--mut);font-size:12px;margin:4px 0}
+.card .eff{color:var(--txt);font-size:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap}
+.secH{font-family:var(--disp);text-transform:uppercase;letter-spacing:.1em;font-size:11px;color:var(--mut);margin:12px 0 6px;border-bottom:1px solid var(--line);padding-bottom:3px}
+.ubar{width:110px}
+.stTxt{font-size:12px;color:var(--mut)}
+.stTxt b{color:var(--txt);font-weight:600}
+.clue{border-left:3px solid var(--line)}
+.clue.mreal{border-left-color:var(--amber)}
+.clue.mjunk{border-left-color:#555;opacity:.75}
+.clue.vreal{border-left-color:var(--green)}
+.clue .meta{font-family:var(--mono);font-size:11px;color:var(--mut)}
+.clue .vb{font-size:11px;padding:1px 6px;border-radius:3px;font-family:var(--mono)}
+.vb.real{background:#2c4025;color:#a9d18e}.vb.junk{background:#3a2f2c;color:#c9938a}.vb.run{background:#33301f;color:var(--amber)}
+.logline{font-size:12px;padding:3px 0;border-bottom:1px dashed #222b23}
+.logline .lt{font-family:var(--mono);color:var(--mut);margin-right:7px;font-size:11px}
+.logline.warn{color:#e8b34d}.logline.bad{color:#e08074}.logline.good{color:#a9d18e}
+
+/* ---------- тосты и модалки ---------- */
+#toasts{position:fixed;right:14px;top:56px;display:flex;flex-direction:column;gap:6px;z-index:50;max-width:320px}
+.toast{background:#20291f;border:1px solid var(--amber-dim);border-radius:4px;padding:8px 12px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.5);animation:tin .25s}
+.toast.good{border-color:#4c6b3c}.toast.bad{border-color:#8a4038}
+@keyframes tin{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+#resultsBtn{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:none;box-shadow:0 6px 20px rgba(0,0,0,.55)}
+#resultsBtn.show{display:block}
+#modalWrap{position:fixed;inset:0;background:rgba(5,8,6,.72);display:flex;align-items:center;justify-content:center;z-index:100}
+#modalWrap.hidden{display:none}
+#modalBox{background:var(--panel);border:1px solid var(--amber-dim);border-radius:6px;max-width:600px;width:92%;max-height:88vh;overflow-y:auto;padding:20px 24px;box-shadow:0 10px 40px rgba(0,0,0,.7)}
+#modalBox h2{color:var(--amber);font-size:19px;margin-bottom:12px}
+#modalBox h3{font-size:13px;color:var(--txt);margin:14px 0 5px}
+#modalBox p,#modalBox li{color:var(--txt);font-size:13px;margin:5px 0}
+#modalBox ul{padding-left:20px}
+#modalBox .mut{color:var(--mut)}
+.pcard{display:flex;gap:14px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:12px;margin:10px 0}
+.pcard .face{font-size:44px}
+.pcard .pi{font-size:13px}
+.pcard .pi b{color:var(--amber)}
+.hl{color:var(--amber)}
+.endstat{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding:4px 0;font-size:13px}
+.endstat b{font-family:var(--mono)}
+
+@media (prefers-reduced-motion:reduce){
+  .pulse,#hdr .brand .dot{animation:none}
+  .toast{animation:none}
+}
+@media (max-width:1100px){
+  body{overflow:auto}
+  #main{flex-direction:column;height:auto}
+  #side{min-width:0}
+}
+</style>
+</head>
+<body>
+
+<header id="hdr">
+  <div class="brand"><span class="dot"></span>Оперативный штаб · Поиск</div>
+  <div class="stat"><b id="timeVal">—</b><span>время</span></div>
+  <div class="stat"><b id="weatherVal">—</b><span>погода</span></div>
+  <div class="stat"><b id="fundsVal">—</b><span>фонд, ₽</span></div>
+  <div class="stat"><b id="missVal">—</b><span>группы в поле</span></div>
+  <div class="stat"><b id="casesVal">—</b><span>спасено / дел</span></div>
+  <div class="stat" id="victimWrap">
+    <div class="bar" id="victimBar"><i></i></div>
+    <span>состояние пропавшего · <b id="victimPct" style="font-size:10px">100%</b></span>
+  </div>
+  <div id="spdRow">
+    <button class="btn" data-action="speed" data-v="0" title="Пауза">⏸</button>
+    <button class="btn" data-action="speed" data-v="1">1×</button>
+    <button class="btn" data-action="speed" data-v="2">2×</button>
+    <button class="btn" data-action="speed" data-v="4">4×</button>
+    <button class="btn" data-action="settings" title="Штаб и прогресс">⚙</button>
+    <button class="btn" data-action="help" title="Справка">?</button>
+  </div>
+</header>
+
+<div id="main">
+  <section id="mapCol">
+    <div id="mapHdr">
+      <span class="lg"><span class="sw" style="background-color:#24402c;background-image:url(images/forest.svg)"></span>лес</span>
+      <span class="lg"><span class="sw" style="background-color:#152a1c;background-image:url(images/dense.svg)"></span>чаща</span>
+      <span class="lg"><span class="sw" style="background-color:#4d5a33;background-image:url(images/meadow.svg)"></span>поляна</span>
+      <span class="lg"><span class="sw" style="background-color:#2e4a44;background-image:url(images/marsh.svg)"></span>болото</span>
+      <span class="lg"><span class="sw" style="background-color:#4a4438;background-image:url(images/hills.svg)"></span>холмы</span>
+      <span class="lg"><span class="sw" style="background-color:#1e3a4f"></span>озеро</span>
+      <span class="lg"><img src="images/markers/pin.svg" style="width:12px;height:14px;vertical-align:-2px"> последний контакт</span>
+      <button class="btn mini" id="heatBtn" data-action="heat" disabled title="Требуется картограф">🔥 Вероятность</button>
+    </div>
+    <div id="mapWrap"><div id="map"></div></div>
+    <div id="cellPanel"></div>
+  </section>
+
+  <aside id="side">
+    <nav id="tabsRow">
+      <button class="tabbtn on" data-action="tab" data-tab="hq">⛺ Штаб</button>
+      <button class="tabbtn" data-action="tab" data-tab="units">🥾 Отряды</button>
+      <button class="tabbtn" data-action="tab" data-tab="clues">🔍 Улики<span class="bdg" id="clueBdg" style="display:none">0</span></button>
+      <button class="tabbtn" data-action="tab" data-tab="case">📋 Дело</button>
+      <button class="tabbtn" data-action="tab" data-tab="log">📡 Журнал</button>
+    </nav>
+    <div id="tabBody"></div>
+  </aside>
+</div>
+
+<div id="toasts"></div>
+<button id="resultsBtn" class="btn primary" data-action="results">📋 Вернуться к итогам</button>
+<div id="modalWrap" class="hidden"><div id="modalBox"></div></div>
+
+<script>
+'use strict';
+/* ================= УТИЛИТЫ ================= */
+const $=s=>document.querySelector(s);
+const ri=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const rf=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const cheb=(a,b)=>Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y));
+const pick=arr=>arr[Math.floor(Math.random()*arr.length)];
+const angleTo=(a,b)=>(Math.atan2(b.x-a.x,-(b.y-a.y))*180/Math.PI+360)%360;
+const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
+const ARROWS=['↑','↗','→','↘','↓','↙','←','↖'];
+const DIRN=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'];
+const oct=d=>Math.round((((d%360)+360)%360)/45)%8;
+const dirArrow=d=>ARROWS[oct(d)];
+const dirName=d=>DIRN[oct(d)];
+const COLS='АБВГДЕЖЗИКЛМ';
+const coordName=(x,y)=>COLS[x]+(y+1);
+const plural=(n,a,b,c)=>{n=Math.abs(n)%100;const m=n%10;if(n>10&&n<20)return c;if(m>1&&m<5)return b;if(m===1)return a;return c;};
+const fmtDur=m=>m>=60?Math.floor(m/60)+' ч '+(m%60)+' мин':m+' мин';
+const gv=(u,f,m)=>u.gen==='f'?f:m;
+
+/* ================= КОНСТАНТЫ ================= */
+const W=12,H=12;
+let HQ={x:5,y:11};   // позиция лагеря; выбирается динамически в tryGen рядом с ТПК
+const TERR={
+  forest:{name:'Лес',emoji:''},
+  dense:{name:'Чаща',emoji:'🌲'},
+  meadow:{name:'Поляна',emoji:'🌼'},
+  marsh:{name:'Болото',emoji:'🌾'},
+  hills:{name:'Холмы',emoji:'⛰'},
+  lake:{name:'Озеро',emoji:'💧'},
+  base:{name:'Лагерь',emoji:''}
+};
+const SMOD={
+  forest:{foot:1.0,dog:1.1,atv:0.8,drone:0.6},
+  dense:{foot:0.8,dog:1.0,atv:0.4,drone:0.25},
+  meadow:{foot:1.1,dog:1.0,atv:1.3,drone:1.5},
+  marsh:{foot:0.7,dog:0.8,atv:0.45,drone:1.3},
+  hills:{foot:0.9,dog:0.9,atv:1.15,drone:1.2}
+};
+const TMOD={
+  forest:{foot:1.0,dog:1.0,atv:1.2,drone:1.0},
+  dense:{foot:1.4,dog:1.3,atv:2.0,drone:1.0},
+  meadow:{foot:0.9,dog:0.9,atv:0.6,drone:1.0},
+  marsh:{foot:1.8,dog:1.6,atv:2.5,drone:1.0},
+  hills:{foot:1.3,dog:1.2,atv:1.5,drone:1.0}
+};
+const NIGHT={foot:0.6,dog:0.85,atv:0.7,drone:0.5};
+const WEATHER={
+  clear:{name:'Ясно',icon:'☀️',mod:{foot:1,dog:1,atv:1,drone:1},drain:0},
+  cloudy:{name:'Облачно',icon:'☁️',mod:{foot:1,dog:1,atv:1,drone:1},drain:0},
+  rain:{name:'Дождь',icon:'🌧️',mod:{foot:.85,dog:.6,atv:.8,drone:.7},drain:.015},
+  fog:{name:'Туман',icon:'🌫️',mod:{foot:.8,dog:1,atv:.8,drone:.3},drain:.006}
+};
+const TYPES={
+  foot:{gen:'f',name:'Пешая группа',icon:'🥾',svg:'images/units/foot.svg',cost:100,power:1.0,cellMin:12,fatS:.4,fatT:.18,unlock:1,
+    desc:'Универсальные поисковики. Надёжны в любом лесу, но не быстры.'},
+  dog:{gen:'m',name:'Кинолог с собакой',icon:'🐕',svg:'images/units/dog.svg',cost:180,power:1.3,cellMin:13,fatS:.45,fatT:.2,unlock:1,
+    desc:'Лучше всех берёт след: на маршруте пропавшего ищет заметно эффективнее и точно определяет направление. Дождь смывает запахи.'},
+  atv:{gen:'m',name:'Квадроцикл',icon:'🚙',svg:'images/units/atv.svg',cost:150,power:0.85,fatS:.3,fatT:.08,cellMin:5,unlock:2,
+    desc:'Быстро добирается куда угодно и почти не устаёт в дороге — незаменим для дальних открытых квадратов. Но с седла в чаще и болоте много не разглядишь.'},
+  drone:{gen:'m',name:'Дрон',icon:'🛸',svg:'images/units/drone.svg',cost:260,power:2.2,cellMin:3,fatS:.8,fatT:.5,unlock:3,
+    desc:'Мгновенно на месте, отлично осматривает открытую местность, фото находок уходят в штаб сразу. Под кронами леса почти слеп; направление по аэрофото — лишь приблизительное. Расходует заряд.'}
+};
+const TENTCAP=[0,3,5,7];
+const MISSCAP=[2,3,4,6];
+const RANGE=[5,7,10,99];
+const EXPT=[0,20,12,6];
+const EXPS=[0,1,2,3];
+const EXPCOST=35;
+const EXPREWARD=40;
+const RESTM=[1,1.7,2.4,3.2];
+const BUILD={
+  tent:{name:'Штабной шатёр',icon:'⛺',max:3,costs:[0,0,150,300],
+    lvls:['','До 3 отрядов. Наём: пешие группы, кинологи.','До 5 отрядов. Открывает наём квадроциклов.','До 7 отрядов. Открывает наём дронов.']},
+  radio:{name:'Радиостанция',icon:'📻',max:3,costs:[0,120,240,400],
+    lvls:['2 группы в поле, радиус связи 5 кв.','3 группы в поле, радиус 8 кв.','4 группы в поле, связь по всей карте.','6 групп в поле, возможен отзыв группы с маршрута.']},
+  carto:{name:'Картограф',icon:'🗺️',max:3,costs:[0,100,220,380],
+    lvls:['Нет анализа улик.','Экспертиза улик (20 мин) и карта вероятности 🔥.','2 эксперта, экспертиза 12 мин.','3 эксперта, экспертиза 6 мин.']},
+  rest:{name:'Место отдыха и питания',icon:'🍲',max:3,costs:[0,80,180,320],
+    lvls:['Отдых в лагере: базовый темп.','Полевая кухня: отдых ×1,7.','Тёплая палатка: отдых ×2,4.','Горячее питание круглосуточно: отдых ×3,2.']},
+  train:{name:'Учебный центр',icon:'🎓',max:2,costs:[0,150,300],
+    lvls:['Нет обучения.','Обучение отрядов до уровня 2.','Обучение отрядов до уровня 3.']}
+};
+const TRAINCOST=[0,0,120,200]; // стоимость обучения ДО уровня n
+const TRAINTIME=90;
+const CLR=[
+  {n:'синий',f:'синяя',g:'синего'},
+  {n:'красный',f:'красная',g:'красного'},
+  {n:'зелёный',f:'зелёная',g:'зелёного'},
+  {n:'чёрный',f:'чёрная',g:'чёрного'},
+  {n:'жёлтый',f:'жёлтая',g:'жёлтого'}
+];
+const PROFILES=[
+  {face:'👵',gen:'f',name:'Валентина Петровна',age:74,who:'пенсионерка',story:'ушла в лес за грибами и не вернулась к вечеру'},
+  {face:'👴',gen:'m',name:'Николай Иванович',age:78,who:'пенсионер',story:'пошёл проверить дальние ягодные места и пропал'},
+  {face:'🧒',gen:'m',name:'Миша',age:9,who:'ребёнок',story:'отстал от группы во время загородной прогулки'},
+  {face:'🧔',gen:'m',name:'Андрей',age:34,who:'турист',story:'не вышел на связь, возвращаясь с одиночного маршрута'}
+];
+
+/* ================= СОСТОЯНИЕ ================= */
+let G=null, cellEls=null, tickN=0, pointerDown=false, dirty=true;
+
+/* ---- кампания: сохраняется локально между делами ---- */
+const SAVE_KEY='rescueHQ.campaign.v1';
+let campaign=null;
+const DEFAULT_CAMPAIGN=()=>({
+  buildings:{tent:1,radio:0,carto:0,rest:0,train:0},
+  roster:[{type:'foot',name:'Лиса-1',level:1},{type:'foot',name:'Лиса-2',level:1}],
+  nameCnt:{foot:2,dog:0,atv:0,drone:0},
+  stats:{won:0,lost:0}
+});
+function normalizeCampaign(c){
+  const d=DEFAULT_CAMPAIGN();
+  return {
+    buildings:Object.assign({},d.buildings,c.buildings),
+    roster:(Array.isArray(c.roster)?c.roster:[]).filter(r=>r&&TYPES[r.type])
+      .map(r=>({type:r.type,name:String(r.name||'Отряд'),level:clamp(r.level|0,1,3)})),
+    nameCnt:Object.assign({},d.nameCnt,c.nameCnt),
+    stats:Object.assign({},d.stats,c.stats)
+  };
+}
+function loadCampaign(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(raw){const c=JSON.parse(raw);if(c&&c.buildings){const n=normalizeCampaign(c);if(n.roster.length)return n;}}
+  }catch(e){}
+  return DEFAULT_CAMPAIGN();
+}
+function saveCampaign(){
+  if(!G)return;
+  campaign={
+    buildings:{...G.buildings},
+    roster:G.units.map(u=>({type:u.type,name:u.name,level:u.level})),
+    nameCnt:{...G.nameCnt},
+    stats:{...campaign.stats}
+  };
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(campaign));}catch(e){}
+}
+function resetCampaign(){
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  campaign=DEFAULT_CAMPAIGN();
+}
+
+function newGame(camp){
+  for(let att=0;att<200;att++){
+    const g=tryGen(camp);
+    if(g){G=g;return;}
+  }
+  throw new Error('genfail');
+}
+
+function tryGen(camp){
+  const g={
+    t:0, funds:250, incAcc:0, spent:0, over:null, paused:true,
+    weather:'clear', weatherNext:ri(150,320),
+    nextEvent:ri(200,300),
+    warned:{w60:false,w35:false,w15:false},
+    buildings:{...camp.buildings},
+    units:[], clues:[], log:[], nameCnt:{...camp.nameCnt},
+    expRuns:[], expQueue:[], objId:1, clueId:1, unitId:1,
+    stats:{cluesTotal:0,cluesReal:0},
+    ui:{tab:'hq',sel:null,selUnits:new Set(),dur:80,heat:false,speed:1}
+  };
+  // --- карта ---
+  const map=[];
+  for(let y=0;y<H;y++){map.push([]);for(let x=0;x<W;x++)map[y].push({x,y,terrain:'forest',coverage:0,objects:[]});}
+  const blob=(terr,seeds,size)=>{for(let i=0;i<seeds;i++){let cx=ri(0,W-1),cy=ri(0,H-1);
+    for(let j=0;j<size;j++){map[cy][cx].terrain=terr;cx=clamp(cx+ri(-1,1),0,W-1);cy=clamp(cy+ri(-1,1),0,H-1);}}};
+  blob('dense',4,8);blob('meadow',3,7);blob('marsh',2,7);blob('hills',2,5);blob('lake',1,5);
+  g.map=map;
+  // --- профиль пропавшего ---
+  const p=pick(PROFILES);
+  const color=pick(CLR);
+  const size=ri(36,45);
+  g.profile={...p,color,size,item:pick(['красный рюкзак','плетёная корзинка','брезентовая сумка','тёмный термос'])};
+  // --- точка последнего контакта и маршрут ---
+  const lkp={x:ri(4,7),y:ri(6,8)};
+  if(map[lkp.y][lkp.x].terrain==='lake'||map[lkp.y][lkp.x].terrain==='base')map[lkp.y][lkp.x].terrain='forest';
+  g.lkp=lkp;
+  const len=ri(5,8);
+  const path=[{...lkp}];
+  let dirM=rf(0,360),guard=0;
+  while(path.length<len&&guard<400){
+    guard++;
+    dirM+=rf(-60,60);
+    const r=dirM*Math.PI/180;
+    const last=path[path.length-1];
+    const nx=last.x+Math.round(Math.sin(r)),ny=last.y-Math.round(Math.cos(r));
+    if(nx<0||nx>=W||ny<0||ny>=H||map[ny][nx].terrain==='lake'
+      ||path.some(q=>q.x===nx&&q.y===ny)||(nx===last.x&&ny===last.y)){dirM+=95;continue;}
+    path.push({x:nx,y:ny});
+  }
+  if(path.length<5)return null;
+  const end=path[path.length-1];
+  if(dist(lkp,end)<3)return null;
+  g.path=path;
+  const L=path.length;
+  g.trailSet=new Set(path.map(q=>q.x+','+q.y));
+  g.victim={x:end.x,y:end.y,strength:100,found:false};
+  // --- лагерь: разворачивается рядом с ТПК (2–3 клетки), на пустой клетке — не на маршруте ---
+  const campCands=[],campNear=[];
+  for(let yy=0;yy<H;yy++)for(let xx=0;xx<W;xx++){
+    const d=cheb({x:xx,y:yy},lkp);
+    if(d<1||d>3||map[yy][xx].terrain==='lake'||g.trailSet.has(xx+','+yy))continue;
+    (d>=2?campCands:campNear).push({x:xx,y:yy});
+  }
+  const campCell=campCands.length?pick(campCands):(campNear.length?pick(campNear):null);
+  if(!campCell)return null;
+  HQ={x:campCell.x,y:campCell.y};
+  g.hq=HQ;
+  map[HQ.y][HQ.x].terrain='base';
+  g.drainBase=100/(1600+150*dist(HQ,g.victim));
+  // --- артефакты на маршруте ---
+  const wrongColor=()=>pick(CLR.filter(c=>c.n!==color.n));
+  const wrongSize=()=>{let s;do{s=ri(36,45);}while(s===size);return s;};
+  const freshTxt=tier=>tier<0.34?'примерно суточной давности':(tier<0.7?'довольно свежий':'совсем свежий');
+  const artTemplates=[
+    tier=>({text:`Чёткий след обуви ${size} размера, ${freshTxt(tier)}`,photoText:'На фото с дрона: следы на земле, размер не разобрать',vis:.5,air:.1}),
+    tier=>({text:`Обрывок ткани ${color.g} цвета на ветке, ${freshTxt(tier)}`,photoText:`На фото с дрона: лоскут ткани ${color.g} цвета на кустах`,vis:.7,air:.5}),
+    tier=>({text:`Обёртка от шоколадного батончика, ${freshTxt(tier)==='совсем свежий'?'совсем свежая':'не выцвела — брошена недавно'}`,photoText:'На фото с дрона: что-то блестит в траве',vis:.8,air:.3}),
+    tier=>({text:`Нитки ${color.g} цвета на колючих кустах`,photoText:`На фото с дрона: цветные нитки на кустарнике, оттенок похож на ${color.n}`,vis:.6,air:.2}),
+    tier=>({text:`Примятая трава и свежесломанные ветки — здесь кто-то проходил`,photoText:'На фото с дрона: полоса примятой травы',vis:.6,air:.4})
+  ];
+  let artCount=0;
+  const addArt=(node,i)=>{
+    const next=g.path[i+1];
+    const dirTrue=next?angleTo(node,next):null;
+    const tier=i/Math.max(1,g.path.length-1);
+    const t=pick(artTemplates)(tier);
+    g.map[node.y][node.x].objects.push({
+      id:g.objId++,kind:'art',text:t.text,photoText:t.photoText,vis:t.vis,air:t.air,
+      dirTrue,dirShow:dirTrue==null?null:(dirTrue+rf(-25,25)+360)%360,tier,found:false
+    });
+    artCount++;
+  };
+  path.forEach((node,i)=>{
+    if(i===0){addArt(node,0);return;}
+    if(i===L-1){addArt(node,i);if(Math.random()<0.5)addArt(node,i);return;}
+    if(Math.random()<0.75)addArt(node,i);
+    if(Math.random()<0.25)addArt(node,i);
+  });
+  if(artCount<4)return null;
+  // --- мусор по всей карте ---
+  const junkTemplates=[
+    ()=>({text:`След обуви ${wrongSize()} размера, старый, залит водой`,photoText:'На фото с дрона: следы на земле, размер не разобрать',vis:.5,air:.1}),
+    ()=>({text:`Свежий след обуви ${wrongSize()} размера`,photoText:'На фото с дрона: следы на земле, размер не разобрать',vis:.5,air:.1}),
+    ()=>{const c=wrongColor();return {text:`Обрывок ткани ${c.g} цвета, выцветший на солнце`,photoText:`На фото с дрона: лоскут ткани ${c.g} цвета`,vis:.7,air:.5};},
+    ()=>({text:'Ржавая консервная банка',photoText:'На фото с дрона: металлический блеск в траве',vis:.8,air:.3}),
+    ()=>({text:'Старое кострище, углям не меньше месяца',photoText:'На фото с дрона: тёмное пятно кострища',vis:.9,air:.6}),
+    ()=>({text:'Пластиковая бутылка, помутневшая от времени',photoText:'На фото с дрона: пластиковый мусор',vis:.8,air:.4}),
+    ()=>({text:'Следы крупного животного — лось или кабан',photoText:'На фото с дрона: цепочка следов, явно не человеческих',vis:.5,air:.15}),
+    ()=>({text:'Свежее кострище и банки — похоже, стоянка охотников',photoText:'На фото с дрона: свежее кострище',vis:.9,air:.6}),
+    ()=>{const c=wrongColor();return {text:`Вязаная перчатка ${c.g} цвета, отсыревшая`,photoText:`На фото с дрона: небольшой предмет ${c.g} цвета`,vis:.6,air:.3};}
+  ];
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const c=g.map[y][x];
+    if(c.terrain==='lake'||c.terrain==='base')continue;
+    let n=(Math.random()<0.5?1:0)+(Math.random()<0.18?1:0);
+    while(n-->0){
+      const t=pick(junkTemplates)();
+      c.objects.push({id:g.objId++,kind:'junk',text:t.text,photoText:t.photoText,vis:t.vis,air:t.air,
+        dirTrue:null,dirShow:rf(0,360),tier:0,found:false});
+    }
+  }
+  // --- команды переносятся из кампании (отдохнувшие, без заданий) ---
+  for(const r of camp.roster){
+    g.units.push({id:g.unitId++,type:r.type,gen:TYPES[r.type].gen,name:r.name,level:r.level,
+      fatigue:0,status:'idle',phaseStart:0,phaseEnd:0,mission:null});
+  }
+  // --- стартовая улика на ТПК ---
+  const startArt=g.map[lkp.y][lkp.x].objects.find(o=>o.kind==='art');
+  startArt.found=true;
+  g.map[lkp.y][lkp.x].coverage=25;
+  g.clues.push({id:g.clueId++,x:lkp.x,y:lkp.y,text:startArt.text,kind:'art',
+    dirShow:startArt.dirTrue,photo:false,tFound:0,mark:'real',verdict:'real',exp:'done',isNew:false,paid:true});
+  g.stats.cluesTotal=1;g.stats.cluesReal=1;
+  return g;
+}
+
+function addUnit(g,type){
+  g.nameCnt[type]++;
+  const n=g.nameCnt[type];
+  const name=type==='foot'?'Лиса-'+n
+    :type==='dog'?'Кинолог · '+(['Альма','Грей','Байкал','Веста','Тайга','Норд','Ирма'][(n-1)%7])
+    :type==='atv'?'Вездеход-'+n
+    :'Коптер-'+n;
+  g.units.push({id:g.unitId++,type,gen:TYPES[type].gen,name,level:1,fatigue:0,status:'idle',phaseStart:0,phaseEnd:0,mission:null});
+}
+
+/* ================= ДОСТУП ================= */
+const cellAt=(x,y)=>G.map[y][x];
+const clueById=id=>G.clues.find(c=>c.id===id);
+const unitById=id=>G.units.find(u=>u.id===id);
+const effMark=c=>c.verdict||c.mark;
+const hourOf=()=>Math.floor((8*60+G.t)%1440/60);
+const isNight=()=>{const h=hourOf();return h>=22||h<6;};
+const activeMissions=()=>G.units.filter(u=>u.mission&&u.status!=='idle').length;
+const inRange=cell=>cheb(HQ,cell)<=RANGE[G.buildings.radio];
+const targetable=cell=>cell.terrain!=='lake'&&cell.terrain!=='base';
+const fatEff=f=>1-0.6*Math.pow(f/100,1.5);
+const lvlPow=u=>1+0.3*(u.level-1);
+const lvlSpd=u=>1-0.15*(u.level-1);
+const lvlFat=u=>1-0.2*(u.level-1);
+const fatLabel=u=>u.type==='drone'?'заряд':'усталость';
+const fatShown=u=>u.type==='drone'?Math.round(100-u.fatigue):Math.round(u.fatigue);
+
+function searchEff(u,cell){
+  const T=TYPES[u.type];
+  let e=T.power*lvlPow(u);
+  e*=(SMOD[cell.terrain]&&SMOD[cell.terrain][u.type])||0;
+  e*=WEATHER[G.weather].mod[u.type];
+  if(isNight())e*=NIGHT[u.type];
+  e*=fatEff(u.fatigue);
+  return e;
+}
+function travelTime(u,cell){
+  const T=TYPES[u.type];
+  const tm=(TMOD[cell.terrain]&&TMOD[cell.terrain][u.type])||1;
+  let t=dist(HQ,cell)*T.cellMin*tm*lvlSpd(u);
+  if(u.fatigue>70)t*=1.25;
+  return Math.max(3,Math.round(t));
+}
+
+/* ================= СИМУЛЯЦИЯ ================= */
+function simMinute(){
+  G.t++;
+  // приток пожертвований
+  G.incAcc+=0.55;
+  if(G.incAcc>=1){const a=Math.floor(G.incAcc);G.funds+=a;G.incAcc-=a;}
+  // погода
+  if(G.t>=G.weatherNext)changeWeather();
+  // состояние пропавшего
+  let drain=G.drainBase;
+  if(isNight())drain*=1.2;
+  drain+=WEATHER[G.weather].drain;
+  G.victim.strength=Math.max(0,G.victim.strength-drain);
+  checkVictimWarnings();
+  if(G.victim.strength<=0){endGame(false);return;}
+  // отряды
+  for(const u of G.units){
+    if(G.over)return;
+    stepUnit(u);
+  }
+  // экспертиза
+  G.expRuns=G.expRuns.filter(r=>{
+    if(G.t>=r.tEnd){finishExpertise(r.id);return false;}
+    return true;
+  });
+  while(G.expQueue.length&&G.expRuns.length<EXPS[G.buildings.carto]){
+    const id=G.expQueue.shift();
+    const c=clueById(id);
+    if(!c)continue;
+    c.exp='run';
+    G.expRuns.push({id,tEnd:G.t+EXPT[G.buildings.carto]});
+  }
+  // события
+  if(G.t>=G.nextEvent){randomEvent();G.nextEvent=G.t+ri(200,340);}
+}
+
+function stepUnit(u){
+  const T=TYPES[u.type];
+  switch(u.status){
+    case 'idle':{
+      const rec=(u.type==='drone'?1.4:0.45)*RESTM[G.buildings.rest];
+      u.fatigue=Math.max(0,u.fatigue-rec);
+      break;
+    }
+    case 'train':
+      if(G.t>=u.phaseEnd){
+        u.level++;u.status='idle';
+        saveCampaign();
+        log(`🎓 ${u.name} ${gv(u,'завершила','завершил')} обучение — уровень ${u.level}`,'good');
+        toast(`🎓 ${u.name}: уровень ${u.level}!`,'good');
+      }
+      break;
+    case 'travel':
+      u.fatigue=Math.min(100,u.fatigue+T.fatT*lvlFat(u));
+      if(u.fatigue>=100){
+        forceReturn(u,u.type==='drone'?'battery':'exhausted');
+      }else if(G.t>=u.phaseEnd){
+        u.status='search';
+        u.phaseStart=G.t;u.phaseEnd=G.t+u.mission.dur;
+        log(`${T.icon} ${u.name} ${gv(u,'прибыла','прибыл')} в кв. ${coordName(u.mission.x,u.mission.y)}, начат осмотр`);
+      }
+      break;
+    case 'search':{
+      doSearchMinute(u);
+      if(G.over)return;
+      if(u.fatigue>=100){
+        forceReturn(u,u.type==='drone'?'battery':'exhausted');
+      }else if(G.t>=u.phaseEnd){
+        voiceCheck(u);
+        forceReturn(u,'done');
+      }
+      break;
+    }
+    case 'return':
+      u.fatigue=Math.min(100,u.fatigue+T.fatT*lvlFat(u)*0.6);
+      if(G.t>=u.phaseEnd)arrive(u);
+      break;
+  }
+}
+
+function doSearchMinute(u){
+  const c=cellAt(u.mission.x,u.mission.y);
+  const e=searchEff(u,c);
+  c.coverage=Math.min(100,c.coverage+e);
+  c.touched=true;
+  const onTrail=G.trailSet.has(c.x+','+c.y);
+  const dogB=(u.type==='dog'&&onTrail)?1.5:1;
+  for(const o of c.objects){
+    if(o.found)continue;
+    const vis=u.type==='drone'?o.air:o.vis;
+    const p=1-Math.exp(-e*vis*0.03*dogB);
+    if(Math.random()<p){
+      o.found=true;
+      if(u.type==='drone'){
+        u.mission.photos=(u.mission.photos||0)+1;
+        createClue(o,c,false,true);
+        toast(`🛸 ${u.name} передал фото находки (кв. ${coordName(c.x,c.y)})`,'good');
+      }else{
+        u.mission.found.push(o);
+        log(`📻 ${u.name}: «Обнаружили предмет, осматриваем дальше» (кв. ${coordName(c.x,c.y)})`);
+      }
+    }
+  }
+  if(!G.victim.found&&G.victim.x===c.x&&G.victim.y===c.y){
+    const vis=u.type==='drone'?0.9:1.2;
+    const p=1-Math.exp(-e*vis*0.035*dogB);
+    if(Math.random()<p){foundVictim(u);return;}
+  }
+  u.fatigue=Math.min(100,u.fatigue+TYPES[u.type].fatS*lvlFat(u));
+}
+
+function voiceCheck(u){
+  const c={x:u.mission.x,y:u.mission.y};
+  if(G.victim.found)return;
+  if(cheb(c,G.victim)===1){
+    const p=u.type==='dog'?0.4:0.15;
+    if(Math.random()<p){
+      log(`📢 ${u.name}: «Показалось, слышали слабый голос рядом с кв. ${coordName(c.x,c.y)}!»`,'warn');
+      toast(`📢 Возможный отклик рядом с кв. ${coordName(c.x,c.y)}!`,'good');
+    }
+  }
+}
+
+function forceReturn(u,reason){
+  let ret;
+  if(u.status==='travel'){
+    const p=clamp((G.t-u.phaseStart)/Math.max(1,u.phaseEnd-u.phaseStart),0,1);
+    ret=Math.max(2,Math.round((u.phaseEnd-u.phaseStart)*p));
+    u.mission.retFrom={x:HQ.x+(u.mission.x-HQ.x)*p,y:HQ.y+(u.mission.y-HQ.y)*p};
+  }else{
+    ret=u.mission.travel;
+    u.mission.retFrom=null;
+  }
+  if(u.fatigue>=100)ret=Math.round(ret*1.3);
+  u.status='return';
+  u.phaseStart=G.t;u.phaseEnd=G.t+ret;
+  if(reason==='exhausted'){log(`😮‍💨 ${u.name} ${gv(u,'выбилась','выбился')} из сил и возвращается в лагерь`,'warn');toast(`😮‍💨 ${u.name} возвращается: нет сил`,'bad');}
+  else if(reason==='battery'){log(`🪫 ${u.name}: заряд на исходе, возврат на базу`,'warn');toast(`🪫 ${u.name} возвращается: разряжен`,'bad');}
+  else if(reason==='recall'){log(`📻 ${u.name} ${gv(u,'отозвана','отозван')} в лагерь по рации`);}
+  else{log(`${TYPES[u.type].icon} ${u.name} ${gv(u,'завершила','завершил')} осмотр кв. ${coordName(u.mission.x,u.mission.y)} и возвращается`);}
+}
+
+function arrive(u){
+  const m=u.mission;
+  u.status='idle';u.mission=null;
+  const found=m.found;
+  const back=gv(u,'вернулась','вернулся');
+  if(found.length){
+    for(const o of found)createClue(o,m,u.type==='dog',false);
+    toast(`${TYPES[u.type].icon} ${u.name} ${back}: ${found.length} ${plural(found.length,'находка','находки','находок')}`,'good');
+    log(`${TYPES[u.type].icon} ${u.name} в лагере, доставлено находок: ${found.length}`,'good');
+  }else if(m.photos){
+    toast(`${TYPES[u.type].icon} ${u.name} ${back}; фото передано ранее: ${m.photos}`,'good');
+    log(`${TYPES[u.type].icon} ${u.name} в лагере; переданных с воздуха фото: ${m.photos}`,'good');
+  }else{
+    toast(`${TYPES[u.type].icon} ${u.name} ${back} без находок`);
+    log(`${TYPES[u.type].icon} ${u.name} в лагере, находок нет`);
+  }
+}
+
+function createClue(obj,at,byDog,photo){
+  let dirShow=obj.dirShow;
+  if(photo)dirShow=(obj.dirTrue!=null?(obj.dirTrue+rf(-40,40)+360)%360:null);
+  else if(byDog&&obj.dirTrue!=null)dirShow=obj.dirTrue;
+  const c={
+    id:G.clueId++,x:at.x,y:at.y,
+    text:photo?obj.photoText:obj.text,
+    kind:obj.kind,dirShow,photo,tFound:G.t,
+    mark:null,verdict:null,exp:null,isNew:true,paid:false
+  };
+  G.clues.unshift(c);
+  G.stats.cluesTotal++;
+  touch();
+}
+
+function finishExpertise(id){
+  const c=clueById(id);
+  if(!c)return;
+  c.exp='done';
+  c.verdict=c.kind==='art'?'real':'junk';
+  const correct=(c.markAtExp==='real'&&c.verdict==='real')||(c.markAtExp==='junk'&&c.verdict==='junk');
+  if(correct)G.funds+=EXPREWARD;
+  if(c.verdict==='real'){
+    G.stats.cluesReal++;
+    if(c.dirShow==null&&!c.photo){
+      log(`🔬 Экспертиза (кв. ${coordName(c.x,c.y)}): улика принадлежит пропавшему. След совсем свежий — он где-то рядом!`,'good');
+    }else{
+      log(`🔬 Экспертиза (кв. ${coordName(c.x,c.y)}): улика принадлежит пропавшему.`,'good');
+    }
+    if(c.markAtExp==='junk')log(`⚠️ Вы посчитали её мусором — оценка ошибочна, отметка исправлена.`,'warn');
+  }else{
+    log(`🔬 Экспертиза (кв. ${coordName(c.x,c.y)}): находка не относится к делу.`);
+    if(c.markAtExp==='real')log(`⚠️ Ложный след из кв. ${coordName(c.x,c.y)} убран с карты.`,'warn');
+  }
+  if(correct)toast(`🔬 Ваша оценка подтвердилась! +${EXPREWARD} ₽`,'good');
+  else if(c.markAtExp)toast('🔬 Экспертиза расходится с вашей отметкой','bad');
+  else toast('🔬 Экспертиза завершена','good');
+  touch();
+}
+
+function changeWeather(){
+  const keys=Object.keys(WEATHER).filter(k=>k!==G.weather);
+  G.weather=pick(keys);
+  G.weatherNext=G.t+ri(150,360);
+  const w=WEATHER[G.weather];
+  log(`${w.icon} Погода изменилась: ${w.name.toLowerCase()}`);
+  if(G.weather==='rain')log('🌧️ Дождь смывает запахи — кинологам будет тяжело','warn');
+  if(G.weather==='fog')log('🌫️ Туман: дроны почти бесполезны, зато собакам он не помеха','warn');
+}
+
+function checkVictimWarnings(){
+  const s=G.victim.strength;
+  if(s<60&&!G.warned.w60){G.warned.w60=true;log('🩺 Врачи: время работает против нас. Состояние пропавшего ухудшается.','warn');toast('🩺 Состояние пропавшего ухудшается','bad');}
+  if(s<35&&!G.warned.w35){G.warned.w35=true;log('🩺 Врачи серьёзно обеспокоены. Нужно ускорить поиски!','bad');toast('🩺 Врачи серьёзно обеспокоены!','bad');}
+  if(s<15&&!G.warned.w15){G.warned.w15=true;log('🩺 Критическое состояние. Счёт идёт на часы.','bad');toast('🚨 Критическое состояние!','bad');}
+}
+
+function randomEvent(){
+  const r=Math.random();
+  if(r<0.3){
+    G.funds+=70;
+    log('🥧 Местные жители привезли в лагерь еду и тёплые вещи (+70 ₽)','good');
+  }else if(r<0.55){
+    const hasReal=G.clues.some(c=>c.verdict==='real');
+    const a=hasReal?140:60;
+    G.funds+=a;
+    log(hasReal?`📺 Сюжет о поисках вышел в новостях — пожертвования выросли (+${a} ₽)`:`🤝 Волонтёрские взносы (+${a} ₽)`,'good');
+  }else{
+    // звонок-наводка: 55% — правда (квадрат маршрута), иначе — ложная
+    let cell=null;
+    if(Math.random()<0.55){
+      cell=G.path[ri(1,G.path.length-1)];
+    }else{
+      for(let gTry=0;gTry<60;gTry++){
+        const t={x:ri(0,W-1),y:ri(0,H-1)};
+        if(G.trailSet.has(t.x+','+t.y)||G.map[t.y][t.x].terrain==='lake'||G.map[t.y][t.x].terrain==='base'||dist(t,G.lkp)<2)continue;
+        cell=t;break;
+      }
+    }
+    if(!cell)return;
+    log(`📞 Звонок в штаб: «Кажется, видели человека в районе кв. ${coordName(cell.x,cell.y)}». Информация не проверена!`,'warn');
+    toast(`📞 Наводка: кв. ${coordName(cell.x,cell.y)} (не проверено)`);
+  }
+}
+
+function foundVictim(u){
+  G.victim.found=true;
+  G.over={win:true,by:u.name};
+  log(`🎉 ${u.name} ${gv(u,'НАШЛА','НАШЁЛ')} ПРОПАВШЕГО в кв. ${coordName(G.victim.x,G.victim.y)}! Начата эвакуация.`,'good');
+  render(true);
+  endGame(true);
+}
+
+function endGame(win){
+  if(!win)G.over={win:false};
+  G.paused=true;
+  if(win)campaign.stats.won++; else campaign.stats.lost++;
+  saveCampaign();   // фиксируем итог дела + переносим текущий состав штаба в кампанию
+  const p=G.profile;
+  const hrs=Math.floor(G.t/60),mins=G.t%60;
+  const searched=G.map.flat().filter(c=>c.touched).length;
+  const score=win?Math.max(0,Math.round(G.victim.strength*10+500-G.t/10)):0;
+  let html;
+  if(win){
+    const g1=p.gen==='f'?'найдена живой и передана':'найден живым и передан';
+    html=`<h2>🎉 Пострадавший найден!</h2>
+      <p>${p.face} <b>${p.name}</b> ${g1} медикам.</p>
+      <p class="mut">Квадрат ${coordName(G.victim.x,G.victim.y)}. Нашёл отряд: ${G.over.by}. Нажмите «Осмотреть карту», чтобы увидеть весь путь пропавшего 👣.</p>`;
+  }else{
+    html=`<h2>🕯️ Поиски завершены</h2>
+      <p>Помощь пришла слишком поздно. ${p.face} <b>${p.name}</b> не ${p.gen==='f'?'дожила':'дожил'} до прибытия спасателей.</p>
+      <p class="mut">Нажмите «Осмотреть карту», чтобы увидеть его путь 👣. В следующий раз действуйте быстрее: стройте штаб, подтверждайте улики и сужайте район поиска.</p>`;
+  }
+  html+=`<h3>Итоги операции</h3>
+    <div class="endstat"><span>Длительность поисков</span><b>${hrs} ч ${mins} мин</b></div>
+    <div class="endstat"><span>Осмотрено квадратов</span><b>${searched}</b></div>
+    <div class="endstat"><span>Собрано улик</span><b>${G.stats.cluesTotal}</b></div>
+    <div class="endstat"><span>Подтверждено настоящих</span><b>${G.stats.cluesReal}</b></div>
+    <div class="endstat"><span>Потрачено средств</span><b>${G.spent} ₽</b></div>
+    ${win?`<div class="endstat"><span>Состояние спасённого</span><b>${Math.round(G.victim.strength)}%</b></div>
+    <div class="endstat"><span>Счёт</span><b>${score}</b></div>`:''}
+    <h3>Хроника поисков</h3>
+    <div class="endstat"><span>✅ Спасено человек</span><b>${campaign.stats.won}</b></div>
+    <div class="endstat"><span>🕯️ Не успели</span><b>${campaign.stats.lost}</b></div>
+    <p class="mut" style="margin-top:10px">Штаб и команды (с их уровнями обучения) переходят в следующее дело — опыт накапливается.</p>
+    <div style="text-align:center;margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button class="btn" data-action="showmap">🗺 Осмотреть карту</button>
+      <button class="btn primary" data-action="next">Следующее дело →</button>
+      <button class="btn danger" data-action="hardreset">Сбросить прогресс</button>
+    </div>`;
+  G.overHtml=html;
+  showModal(html,true);
+  render(true);
+}
+
+function startCase(){
+  $('#resultsBtn').classList.remove('show');
+  newGame(campaign);
+  buildMap();
+  render(true);
+  showIntro(true);
+}
+function doHardReset(){
+  resetCampaign();
+  startCase();
+}
+function showSettings(){
+  const lv=k=>`${BUILD[k].icon} ${BUILD[k].name.toLowerCase()} — ур. ${G.buildings[k]}/${BUILD[k].max}`;
+  const roster=G.units.map(u=>`${TYPES[u.type].icon} ${u.name} (${'★'.repeat(u.level)})`).join('<br>')||'—';
+  const html=`<h2>⚙ Штаб и прогресс</h2>
+    <div class="secH">Хроника</div>
+    <div class="endstat"><span>✅ Спасено человек</span><b>${campaign.stats.won}</b></div>
+    <div class="endstat"><span>🕯️ Не успели</span><b>${campaign.stats.lost}</b></div>
+    <div class="secH">Развитие штаба (сохраняется между делами)</div>
+    <p class="mut">${Object.keys(BUILD).map(lv).join('<br>')}</p>
+    <div class="secH">Состав команд</div>
+    <p class="mut">${roster}</p>
+    <div class="secH">Управление</div>
+    <p class="mut">Прогресс хранится в этом браузере. «Новая игра» полностью обнулит штаб и команды и начнёт первое дело заново.</p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px">
+      <button class="btn primary" data-action="resume">Закрыть</button>
+      <button class="btn danger" data-action="hardreset">Новая игра (сбросить прогресс)</button>
+    </div>`;
+  showModal(html);
+}
+
+/* ================= ДЕЙСТВИЯ ИГРОКА ================= */
+function dispatchUnit(u,cell){
+  const tr=travelTime(u,cell);
+  u.mission={x:cell.x,y:cell.y,dur:G.ui.dur,travel:tr,found:[]};
+  u.status='travel';
+  u.phaseStart=G.t;u.phaseEnd=G.t+tr;
+  log(`${TYPES[u.type].icon} ${u.name} ${gv(u,'выдвинулась','выдвинулся')} в кв. ${coordName(cell.x,cell.y)} (в пути ~${fmtDur(tr)})`);
+}
+
+function actSend(){
+  const s=G.ui.sel;
+  if(!s)return;
+  const cell=cellAt(s.x,s.y);
+  if(!targetable(cell)){toast('Этот квадрат нельзя обследовать','bad');return;}
+  if(!inRange(cell)){toast('Квадрат вне радиуса связи. Улучшите радиостанцию.','bad');return;}
+  const ids=[...G.ui.selUnits];
+  if(!ids.length){toast('Выберите хотя бы один отряд','bad');return;}
+  let sent=0;
+  for(const id of ids){
+    const u=unitById(id);
+    if(!u||u.status!=='idle')continue;
+    if(activeMissions()>=MISSCAP[G.buildings.radio]){
+      toast(`Радиостанция не потянет больше ${MISSCAP[G.buildings.radio]} групп в поле`,'bad');
+      break;
+    }
+    dispatchUnit(u,cell);
+    G.ui.selUnits.delete(id);
+    sent++;
+  }
+  if(sent)toast(`Отправлено отрядов: ${sent} → кв. ${coordName(cell.x,cell.y)}`,'good');
+  touch();
+}
+
+function actBuild(key){
+  const b=BUILD[key];
+  const cur=G.buildings[key];
+  if(cur>=b.max)return;
+  const cost=b.costs[cur+1];
+  if(G.funds<cost){toast('Не хватает средств','bad');return;}
+  G.funds-=cost;G.spent+=cost;
+  G.buildings[key]=cur+1;
+  log(`🔨 ${b.name}: уровень ${cur+1}. ${b.lvls[cur+1]}`,'good');
+  toast(`${b.icon} ${b.name} — уровень ${cur+1}`,'good');
+  if(key==='carto'&&G.buildings.carto===1)$('#heatBtn').disabled=false;
+  saveCampaign();
+  touch();
+}
+
+function actHire(type){
+  const T=TYPES[type];
+  if(G.buildings.tent<T.unlock){toast('Сначала улучшите штабной шатёр','bad');return;}
+  if(G.units.length>=TENTCAP[G.buildings.tent]){toast('В лагере нет места. Улучшите штабной шатёр.','bad');return;}
+  if(G.funds<T.cost){toast('Не хватает средств','bad');return;}
+  G.funds-=T.cost;G.spent+=T.cost;
+  addUnit(G,type);
+  const u=G.units[G.units.length-1];
+  log(`🤝 К поискам присоединился новый отряд: ${T.icon} ${u.name}`,'good');
+  toast(`${T.icon} ${u.name} в строю`,'good');
+  saveCampaign();
+  touch();
+}
+
+function actTrain(id){
+  const u=unitById(id);
+  if(!u||u.status!=='idle')return;
+  const target=u.level+1;
+  if(target>3||G.buildings.train<target-1){toast('Нужен учебный центр выше уровнем','bad');return;}
+  const cost=TRAINCOST[target];
+  if(G.funds<cost){toast('Не хватает средств','bad');return;}
+  G.funds-=cost;G.spent+=cost;
+  u.status='train';
+  u.phaseStart=G.t;u.phaseEnd=G.t+TRAINTIME;
+  log(`🎓 ${u.name} направлена на обучение (${fmtDur(TRAINTIME)})`);
+  touch();
+}
+
+function actRecall(id){
+  const u=unitById(id);
+  if(!u||!u.mission||u.status==='return')return;
+  forceReturn(u,'recall');
+  touch();
+}
+
+function actMark(id,v){
+  const c=clueById(id);
+  if(!c)return;
+  if(c.verdict){toast('По этой находке уже есть заключение экспертизы');return;}
+  c.mark=c.mark===v?null:v;
+  touch();
+}
+
+function actExpertise(id){
+  if(G.buildings.carto<1){toast('Нужен картограф','bad');return;}
+  const c=clueById(id);
+  if(!c||c.exp)return;
+  if(G.funds<EXPCOST){toast('Не хватает средств на экспертизу','bad');return;}
+  G.funds-=EXPCOST;G.spent+=EXPCOST;
+  c.markAtExp=c.mark;
+  c.exp='wait';
+  G.expQueue.push(id);
+  toast(`🔬 Находка передана на экспертизу (−${EXPCOST} ₽)`);
+  touch();
+}
+
+function selectCell(x,y){
+  const cell=cellAt(x,y);
+  if(!inRange(cell)&&targetable(cell)){
+    toast('Квадрат вне радиуса связи — улучшите радиостанцию','bad');
+  }
+  G.ui.sel={x,y};
+  touch();
+}
+
+/* ================= ТЕПЛОВАЯ КАРТА ================= */
+function heatScores(){
+  const hints=G.clues.filter(c=>effMark(c)==='real');
+  const sc=[];let mx=0;
+  for(let y=0;y<H;y++){sc.push([]);
+    for(let x=0;x<W;x++){
+      let s=0.35*Math.exp(-dist({x,y},G.lkp)/3);
+      for(const h of hints){
+        const dx=x-h.x,dy=y-h.y;
+        const d=Math.hypot(dx,dy);
+        if(h.dirShow!=null){
+          if(d<0.5)continue;
+          const ang=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+          const diff=angDiff(ang,h.dirShow);
+          if(diff<70)s+=Math.cos(diff*Math.PI/180)*Math.exp(-Math.abs(d-2.5)/3);
+        }else{
+          s+=0.9*Math.exp(-d/1.6);
+        }
+      }
+      sc[y].push(s);
+      if(s>mx)mx=s;
+    }
+  }
+  if(mx>0)for(let y=0;y<H;y++)for(let x=0;x<W;x++)sc[y][x]/=mx;
+  return sc;
+}
+
+/* ================= РЕНДЕР ================= */
+function buildMap(){
+  const mapEl=$('#map');
+  mapEl.innerHTML='';
+  cellEls=[];
+  // угловая ячейка + буквы столбцов
+  mapEl.appendChild(lblCell(''));
+  for(let x=0;x<W;x++)mapEl.appendChild(lblCell(COLS[x]));
+  for(let y=0;y<H;y++){
+    mapEl.appendChild(lblCell(String(y+1)));
+    cellEls.push([]);
+    for(let x=0;x<W;x++){
+      const c=cellAt(x,y);
+      const el=document.createElement('div');
+      el.className='cell t-'+c.terrain;
+      el.innerHTML=`<span class="ter"></span><div class="heat"></div><div class="mk"></div><div class="uu"></div><div class="cv"><i></i></div>`;
+      el.addEventListener('click',()=>selectCell(x,y));
+      mapEl.appendChild(el);
+      cellEls[y].push({
+        el,
+        heat:el.querySelector('.heat'),
+        mk:el.querySelector('.mk'),
+        uu:el.querySelector('.uu'),
+        cvi:el.querySelector('.cv i'),
+        _mk:'',_uu:''
+      });
+    }
+  }
+}
+function lblCell(t){
+  const d=document.createElement('div');
+  d.className='lbl';d.textContent=t;
+  return d;
+}
+
+function unitPositions(){
+  const pos={};
+  for(const u of G.units){
+    if(!u.mission)continue;
+    let x,y;
+    const m=u.mission;
+    const p=clamp((G.t-u.phaseStart)/Math.max(1,u.phaseEnd-u.phaseStart),0,1);
+    if(u.status==='travel'){x=HQ.x+(m.x-HQ.x)*p;y=HQ.y+(m.y-HQ.y)*p;}
+    else if(u.status==='search'){x=m.x;y=m.y;}
+    else if(u.status==='return'){const s=m.retFrom||m;x=s.x+(HQ.x-s.x)*p;y=s.y+(HQ.y-s.y)*p;}
+    else continue;
+    const k=Math.round(clamp(x,0,W-1))+','+Math.round(clamp(y,0,H-1));
+    pos[k]=(pos[k]||'')+`<img class="ui" src="${TYPES[u.type].svg}" alt="">`;
+  }
+  return pos;
+}
+
+function updateMap(){
+  const night=isNight();
+  $('#map').classList.toggle('night',night&&!G.over);
+  const heat=(G.ui.heat&&G.buildings.carto>=1)?heatScores():null;
+  const upos=unitPositions();
+  // маркеры улик и стрелки
+  const marks={};
+  const addMark=(x,y,html)=>{const k=x+','+y;marks[k]=(marks[k]||'')+html;};
+  for(const c of G.clues){
+    const m=effMark(c);
+    if(m==='real'&&c.dirShow!=null)addMark(c.x,c.y,`<span class="ar">${dirArrow(c.dirShow)}</span>`);
+    else if(m==='real')addMark(c.x,c.y,`<span class="ar">◎</span>`);
+    else if(!m)addMark(c.x,c.y,`<span class="cd">•</span>`);
+  }
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const c=cellAt(x,y),r=cellEls[y][x];
+    const sel=G.ui.sel&&G.ui.sel.x===x&&G.ui.sel.y===y;
+    const far=!inRange(c)&&targetable(c);
+    r.el.className='cell t-'+c.terrain+(sel?' sel':'')+(far?' far':'');
+    r.cvi.style.width=c.coverage+'%';
+    r.heat.style.opacity=heat?(heat[y][x]*0.5):0;
+    let mk='';
+    if(x===HQ.x&&y===HQ.y)mk='<img class="mkimg" src="images/hq/tent.svg" alt="">';
+    if(x===G.lkp.x&&y===G.lkp.y)mk+='<img class="mkimg pin pulse" src="images/markers/pin.svg" alt="">';
+    if(G.over){
+      if(G.trailSet.has(x+','+y)&&!(x===G.lkp.x&&y===G.lkp.y)&&!(x===G.victim.x&&y===G.victim.y))mk+='<img class="mkimg trail" src="images/markers/trail.svg" alt="">';
+      if(x===G.victim.x&&y===G.victim.y)mk+='<img class="mkimg" src="images/markers/victim.svg" alt="">';
+    }
+    mk+=marks[x+','+y]||'';
+    if(r._mk!==mk){r._mk=mk;r.mk.innerHTML=mk;}
+    const uu=upos[x+','+y]||'';
+    if(r._uu!==uu){r._uu=uu;r.uu.innerHTML=uu;}
+    r.el.title=`Кв. ${coordName(x,y)} · ${TERR[c.terrain].name}`+
+      (targetable(c)?` · осмотрено ${Math.round(c.coverage)}%`:'')+
+      (far?' · вне радиуса связи':'');
+  }
+}
+
+function renderHeader(){
+  $('#timeVal').textContent=fmtTime();
+  const w=WEATHER[G.weather];
+  $('#weatherVal').textContent=`${w.icon} ${w.name}${isNight()?' · 🌙 ночь':''}`;
+  $('#fundsVal').textContent=Math.floor(G.funds);
+  $('#missVal').textContent=`${activeMissions()}/${MISSCAP[G.buildings.radio]}`;
+  $('#casesVal').textContent=`${campaign.stats.won} / ${campaign.stats.won+campaign.stats.lost}`;
+  const s=G.victim.strength;
+  const bar=$('#victimBar');
+  bar.className='bar'+(s<35?' crit':(s<60?' warn':''));
+  bar.querySelector('i').style.width=s+'%';
+  $('#victimPct').textContent=Math.round(s)+'%';
+  document.querySelectorAll('#spdRow [data-action="speed"]').forEach(b=>{
+    const v=+b.dataset.v;
+    b.classList.toggle('on',G.paused?v===0:v===G.ui.speed);
+  });
+  // бейдж непрочитанных улик
+  const n=G.clues.filter(c=>c.isNew).length;
+  const bdg=$('#clueBdg');
+  bdg.style.display=n?'':'none';
+  bdg.textContent=n;
+}
+function fmtTime(){
+  const abs=8*60+G.t;
+  const day=Math.floor(abs/1440)+1;
+  const h=Math.floor(abs%1440/60),m=abs%60;
+  return `День ${day} · ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function renderCellPanel(){
+  const el=$('#cellPanel');
+  const s=G.ui.sel;
+  if(!s){
+    el.innerHTML='<h3>Квадрат не выбран</h3><p class="stTxt">Кликните по квадрату карты, чтобы отправить туда поисковую группу. 📍 — точка, где пропавшего видели в последний раз.</p>';
+    return;
+  }
+  const cell=cellAt(s.x,s.y);
+  let html=`<h3>Квадрат ${coordName(s.x,s.y)} · ${TERR[cell.terrain].name}</h3>`;
+  if(cell.terrain==='base'){
+    el.innerHTML=html+'<p class="stTxt">Это ваш лагерь. Здесь отряды отдыхают и сдают находки.</p>';
+    return;
+  }
+  if(cell.terrain==='lake'){
+    el.innerHTML=html+'<p class="stTxt">Открытая вода. Наземный поиск здесь невозможен.</p>';
+    return;
+  }
+  if(!inRange(cell)){
+    el.innerHTML=html+'<p class="stTxt">⚠️ Вне радиуса связи. Улучшите радиостанцию, чтобы координировать поиск в этом квадрате.</p>';
+    return;
+  }
+  const cluesHere=G.clues.filter(c=>c.x===s.x&&c.y===s.y);
+  html+=`<p class="stTxt">Осмотрено: <b>${Math.round(cell.coverage)}%</b>`+
+    (s.x===G.lkp.x&&s.y===G.lkp.y?' · <span class="hl">📍 точка последнего контакта</span>':'')+
+    (cluesHere.length?` · находок здесь: <b>${cluesHere.length}</b>`:'')+`</p>`;
+  // выбор отрядов
+  const idle=G.units.filter(u=>u.status==='idle');
+  if(!idle.length){
+    html+='<p class="stTxt" style="margin-top:8px">Свободных отрядов нет — все в поле, на отдыхе они появятся здесь.</p>';
+  }else{
+    html+='<div class="secH">Кого отправить</div>';
+    for(const u of idle){
+      const T=TYPES[u.type];
+      const eff=Math.round(searchEff(u,cell)*100);
+      const tt=travelTime(u,cell);
+      const tired=u.type==='drone'?u.fatigue>75:u.fatigue>=90;
+      const est=u.type==='drone'?Math.round((tt+0.6*tt)*T.fatT*lvlFat(u)+G.ui.dur*T.fatS*lvlFat(u)):0;
+      const low=u.type==='drone'&&(100-u.fatigue)<est+5;
+      const dis=tired;
+      const checked=G.ui.selUnits.has(u.id)&&!dis;
+      html+=`<div class="urow${dis?' dis':''}">
+        <label><input type="checkbox" data-action="selunit" data-id="${u.id}" ${checked?'checked':''} ${dis?'disabled':''}>
+        <span class="nm">${T.icon} ${u.name}${u.level>1?' <span class="lvl">ур.'+u.level+'</span>':''}</span>
+        <span class="inf">эфф. ${eff}% · путь ~${fmtDur(tt)}${dis?' · нужен отдых':(low?' · ⚠️ может не хватить заряда':'')}</span></label>
+      </div>`;
+    }
+    html+=`<div class="durrow">
+      <label><input type="radio" name="dur" data-action="dur" data-v="40" ${G.ui.dur===40?'checked':''}>Быстрый осмотр (40 мин)</label>
+      <label><input type="radio" name="dur" data-action="dur" data-v="80" ${G.ui.dur===80?'checked':''}>Стандартный (1 ч 20 мин)</label>
+      <label><input type="radio" name="dur" data-action="dur" data-v="140" ${G.ui.dur===140?'checked':''}>Тщательный (2 ч 20 мин)</label>
+    </div>`;
+    const slots=MISSCAP[G.buildings.radio]-activeMissions();
+    html+=`<div class="row">
+      <span class="stTxt">Свободных «слотов» рации: <b>${slots}</b></span>
+      <button class="btn primary" data-action="send" ${slots<=0?'disabled':''}>Отправить на поиск</button>
+    </div>`;
+  }
+  if(cluesHere.length){
+    html+='<div class="secH">Найдено в этом квадрате</div>';
+    for(const c of cluesHere.slice(0,4)){
+      html+=`<p class="stTxt">• ${c.text}</p>`;
+    }
+  }
+  el.innerHTML=html;
+}
+
+function renderTab(){
+  const el=$('#tabBody');
+  const t=G.ui.tab;
+  document.querySelectorAll('#tabsRow .tabbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  if(t==='hq')el.innerHTML=renderHQ();
+  else if(t==='units')el.innerHTML=renderUnits();
+  else if(t==='clues')el.innerHTML=renderClues();
+  else if(t==='case')el.innerHTML=renderCase();
+  else el.innerHTML=renderLog();
+}
+
+function renderHQ(){
+  let html='<div class="secH">Развитие лагеря</div>';
+  for(const key of Object.keys(BUILD)){
+    const b=BUILD[key],cur=G.buildings[key];
+    const next=cur+1;
+    html+=`<div class="card">
+      <h3>${b.icon} ${b.name} <span class="lvl">ур. ${cur}/${b.max}</span></h3>
+      <p class="eff">${b.lvls[cur]||'—'}</p>`;
+    if(cur<b.max){
+      const cost=b.costs[next];
+      html+=`<div class="row"><span class="stTxt">Дальше: ${b.lvls[next]}</span>
+        <button class="btn mini" data-action="build" data-key="${key}" ${G.funds<cost?'disabled':''}>Улучшить · ${cost} ₽</button></div>`;
+    }
+    html+='</div>';
+  }
+  html+=`<div class="secH">Наём отрядов (${G.units.length}/${TENTCAP[G.buildings.tent]})</div>`;
+  for(const type of Object.keys(TYPES)){
+    const T=TYPES[type];
+    const locked=G.buildings.tent<T.unlock;
+    const full=G.units.length>=TENTCAP[G.buildings.tent];
+    html+=`<div class="card">
+      <h3>${T.icon} ${T.name}</h3>
+      <p>${T.desc}</p>
+      <div class="row">
+        <span class="stTxt">${locked?'🔒 Нужен шатёр ур. '+T.unlock:'Стоимость: <b>'+T.cost+' ₽</b>'}</span>
+        <button class="btn mini" data-action="hire" data-type="${type}" ${locked||full||G.funds<T.cost?'disabled':''}>Нанять</button>
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
+function renderUnits(){
+  if(!G.units.length)return '<p class="stTxt">Отрядов нет.</p>';
+  let html='';
+  for(const u of G.units){
+    const T=TYPES[u.type];
+    let st='';
+    const left=Math.max(0,u.phaseEnd-G.t);
+    if(u.status==='idle')st=u.fatigue>1?'В лагере · отдыхает':('В лагере · '+gv(u,'готова','готов')+' к выходу');
+    else if(u.status==='travel')st=`В пути к кв. ${coordName(u.mission.x,u.mission.y)} · прибытие через ${fmtDur(left)}`;
+    else if(u.status==='search')st=`Ведёт поиск в кв. ${coordName(u.mission.x,u.mission.y)} · ещё ${fmtDur(left)}`;
+    else if(u.status==='return')st=`Возвращается в лагерь · ${fmtDur(left)}`;
+    else if(u.status==='train')st=`На обучении · ещё ${fmtDur(left)}`;
+    const f=fatShown(u);
+    const fCls=u.type==='drone'?(f<30?' crit':(f<55?' warn':'')):(f>70?' crit':(f>45?' warn':''));
+    const canTrain=u.status==='idle'&&u.level<3&&G.buildings.train>=u.level;
+    const canRecall=G.buildings.radio>=3&&u.mission&&u.status!=='return';
+    html+=`<div class="card">
+      <h3>${T.icon} ${u.name} <span class="lvl">${'★'.repeat(u.level)}${'☆'.repeat(3-u.level)}</span></h3>
+      <p>${st}</p>
+      <div class="row">
+        <span class="stTxt" style="display:flex;align-items:center;gap:6px">${fatLabel(u)}
+          <span class="bar ubar${fCls}"><i style="width:${u.type==='drone'?f:100-f}%"></i></span>
+          <b style="font-family:var(--mono)">${f}%</b></span>
+        <span>
+        ${canTrain?`<button class="btn mini" data-action="train" data-id="${u.id}" ${G.funds<TRAINCOST[u.level+1]?'disabled':''}>🎓 Обучить · ${TRAINCOST[u.level+1]} ₽</button>`:''}
+        ${canRecall?`<button class="btn mini danger" data-action="recall" data-id="${u.id}">📻 Отозвать</button>`:''}
+        </span>
+      </div>
+    </div>`;
+  }
+  if(G.buildings.train<1)html+='<p class="stTxt">🎓 Постройте учебный центр, чтобы повышать уровень отрядов: выше уровень — быстрее ход и внимательнее поиск.</p>';
+  return html;
+}
+
+function renderClues(){
+  G.clues.forEach(c=>c.isNew=false);
+  if(!G.clues.length)return '<p class="stTxt">Пока находок нет. Отправляйте группы обследовать квадраты вокруг точки 📍.</p>';
+  let html=`<p class="stTxt">Сверяйте находки с приметами во вкладке «Дело» и сами решайте: 📌 улика или 🗑 мусор. Отметка «улика» выводит направление на карту — ошибётесь, поведёте поиск не туда. Экспертиза (${EXPCOST} ₽) даёт точное заключение; за верную догадку вернут ${EXPREWARD} ₽.</p>`;
+  for(const c of G.clues){
+    const m=effMark(c);
+    const cls=c.verdict==='real'?'vreal':(m==='real'?'mreal':(m==='junk'?'mjunk':''));
+    let vb='';
+    if(c.verdict==='real')vb='<span class="vb real">✓ подтверждено</span>';
+    else if(c.verdict==='junk')vb='<span class="vb junk">✗ не относится</span>';
+    else if(c.exp==='run')vb='<span class="vb run">🔬 анализ…</span>';
+    else if(c.exp==='wait')vb='<span class="vb run">в очереди</span>';
+    const dir=c.dirShow!=null&&m==='real'?` <span class="hl">направление: ${dirName(c.dirShow)} ${dirArrow(c.dirShow)}</span>`:'';
+    const canExp=G.buildings.carto>=1&&!c.exp;
+    html+=`<div class="card clue ${cls}">
+      <div class="meta">кв. ${coordName(c.x,c.y)} · ${fmtTimeAt(c.tFound)}${c.photo?' · 📷 фото с дрона':''} ${vb}</div>
+      <p style="color:var(--txt)">${c.text}${dir}</p>
+      <div class="row"><span>
+        <button class="btn mini ${c.mark==='real'?'on':''}" data-action="mark" data-id="${c.id}" data-v="real" ${c.verdict?'disabled':''}>📌 Улика</button>
+        <button class="btn mini ${c.mark==='junk'?'on':''}" data-action="mark" data-id="${c.id}" data-v="junk" ${c.verdict?'disabled':''}>🗑 Мусор</button></span>
+        ${canExp?`<button class="btn mini" data-action="exp" data-id="${c.id}" ${G.funds<EXPCOST?'disabled':''}>🔬 Экспертиза (${EXPT[G.buildings.carto]} мин · ${EXPCOST} ₽)</button>`
+          :(G.buildings.carto<1&&!c.verdict?'<span class="stTxt">🔬 нужен картограф</span>':'')}
+      </div>
+    </div>`;
+  }
+  return html;
+}
+function fmtTimeAt(t){
+  const abs=8*60+t;
+  const day=Math.floor(abs/1440)+1;
+  const h=Math.floor(abs%1440/60),m=abs%60;
+  return `д${day} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function renderCase(){
+  const p=G.profile;
+  return `<div class="pcard">
+      <div class="face">${p.face}</div>
+      <div class="pi">
+        <p><b>${p.name}</b>, ${p.age} ${plural(p.age,'год','года','лет')}, ${p.who}</p>
+        <p class="mut">${p.story[0].toUpperCase()+p.story.slice(1)}.</p>
+      </div>
+    </div>
+    <div class="secH">Приметы</div>
+    <div class="card">
+      <p>🧥 Куртка: <b class="hl">${p.color.f}</b></p>
+      <p>👟 Обувь: ботинки, <b class="hl">${p.size} размер</b></p>
+      <p>🎒 С собой: ${p.item}</p>
+    </div>
+    <div class="secH">Вводная</div>
+    <div class="card">
+      <p>Последний раз ${p.name.split(' ')[0]} видели у квадрата <b class="hl">${coordName(G.lkp.x,G.lkp.y)}</b> 📍 — там найдены подтверждённые следы.</p>
+      <p class="mut">Пропавшие редко ходят по прямой, но следы подскажут направление. Ищите цепочку улик: каждая настоящая находка сужает район поиска.</p>
+    </div>
+    <div class="secH">Памятка координатора</div>
+    <div class="card">
+      <p class="mut">• Сверяйте цвет ткани и размер следов с приметами.<br>
+      • «Совсем свежие» находки — пропавший недалеко от них.<br>
+      • Кинологи на следу ищут лучше всех; дождь им мешает, туман — нет.<br>
+      • Дроны сильны над полянами и болотами, слепы в чаще, ночью хуже всем.<br>
+      • Уставший отряд ищет вполсилы — давайте людям отдых.</p>
+    </div>`;
+}
+
+function renderLog(){
+  if(!G.log.length)return '<p class="stTxt">Журнал пуст.</p>';
+  let html='';
+  for(const l of G.log)html+=`<div class="logline ${l.cls||''}"><span class="lt">${fmtTimeAt(l.t)}</span>${l.txt}</div>`;
+  return html;
+}
+
+function render(force){
+  renderHeader();
+  updateMap();
+  if(force){
+    renderCellPanel();
+    renderTab();
+    dirty=false;
+  }
+}
+function touch(){
+  dirty=true;
+  if(pointerDown||activeInPanels())return;   // не пересоздаём панели во время клика/ввода — иначе действие «проглатывается»
+  render(true);
+}
+function activeInPanels(){
+  const el=document.activeElement;
+  if(!el||el===document.body||!el.closest)return false;
+  return !!el.closest('#side,#cellPanel')&&(el.tagName==='INPUT'||el.tagName==='SELECT');
+}
+function tick(){
+  if(!G.paused&&!G.over){
+    for(let i=0;i<G.ui.speed;i++){simMinute();if(G.over)break;}
+  }
+  tickN++;
+  renderHeader();
+  updateMap();
+  // панели обновляем для живых таймеров, но никогда посреди взаимодействия
+  if(!pointerDown&&!activeInPanels()&&(dirty||(!G.paused&&!G.over&&tickN%4===0))){
+    renderCellPanel();
+    renderTab();
+    dirty=false;
+  }
+}
+
+/* ================= ЖУРНАЛ / ТОСТЫ / МОДАЛКИ ================= */
+function log(txt,cls){
+  G.log.unshift({t:G.t,txt,cls});
+  if(G.log.length>250)G.log.pop();
+}
+function toast(txt,cls){
+  const box=$('#toasts');
+  const d=document.createElement('div');
+  d.className='toast '+(cls||'');
+  d.textContent=txt;
+  box.appendChild(d);
+  while(box.children.length>4)box.firstChild.remove();
+  setTimeout(()=>{if(d.parentNode)d.remove();},5200);
+}
+let pausedBeforeModal=false;
+function showModal(html,noAutoClose){
+  pausedBeforeModal=G.paused;
+  G.paused=true;
+  $('#modalBox').innerHTML=html;
+  $('#modalWrap').classList.remove('hidden');
+}
+function closeModal(){
+  $('#modalWrap').classList.add('hidden');
+  if(!G.over)G.paused=pausedBeforeModal;
+  render(true);
+}
+
+function showIntro(first){
+  const p=G.profile;
+  const veteran=campaign.stats.won+campaign.stats.lost>0;
+  const caseNo=campaign.stats.won+campaign.stats.lost+1;
+  const html=`<h2>🚨 Вводная · дело №${caseNo}</h2>
+    <div class="pcard">
+      <div class="face">${p.face}</div>
+      <div class="pi">
+        <p><b>${p.name}</b>, ${p.age} ${plural(p.age,'год','года','лет')}, ${p.who} — ${p.story}.</p>
+        <p class="mut">Приметы: <span class="hl">${p.color.f} куртка</span>, обувь <span class="hl">${p.size} размера</span>, с собой ${p.item}.</p>
+        <p class="mut">Точка последнего контакта — квадрат <b class="hl">${coordName(G.lkp.x,G.lkp.y)}</b> (📍 на карте).</p>
+      </div>
+    </div>
+    ${veteran?`<p class="mut">🏕️ Штаб и команды с прошлых дел прибыли на новое место в полном составе (${G.units.length} ${plural(G.units.length,'отряд','отряда','отрядов')}). Бюджет операции — новый.</p>`:''}
+    <h3>Как вести поиск</h3>
+    <ul>
+      <li><b>Кликните квадрат</b> на карте → выберите отряды и время осмотра → «Отправить». Группа дойдёт, обследует квадрат и вернётся с находками.</li>
+      <li><b>Разбирайте находки</b> во вкладке «Улики»: сверяйте с приметами и решайте — настоящая улика 📌 или мусор 🗑. Настоящие следы укажут направление движения пропавшего.</li>
+      <li><b>Развивайте лагерь</b>: шатёр — больше отрядов, радиостанция — больше групп в поле и дальность, картограф — экспертиза и карта вероятности, кухня — быстрый отдых, учебный центр — прокачка отрядов.</li>
+      <li><b>Берегите людей</b>: уставшие ищут вполсилы. И помните — состояние пропавшего ухудшается с каждым часом.</li>
+    </ul>
+    <p class="mut">Подсказка: начните с квадратов рядом с 📍 — стартовый след ведёт ${G.clues.length?dirName(G.clues[G.clues.length-1].dirShow??0):''} ${G.clues.length&&G.clues[G.clues.length-1].dirShow!=null?dirArrow(G.clues[G.clues.length-1].dirShow):''}.</p>
+    <div style="text-align:center;margin-top:14px">
+      <button class="btn primary" data-action="${first?'start':'resume'}">${first?'Начать операцию':'Продолжить'}</button>
+    </div>`;
+  showModal(html,false);
+}
+
+/* ================= СОБЫТИЯ UI ================= */
+function bindEvents(){
+  document.addEventListener('pointerdown',()=>{pointerDown=true;});
+  document.addEventListener('pointerup',()=>{pointerDown=false;if(dirty&&!activeInPanels())render(true);});
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-action]');
+    if(!b)return;
+    const a=b.dataset.action;
+    if(G.over&&!(a==='next'||a==='hardreset'||a==='restart'||a==='tab'||a==='showmap'||a==='results'))return;   // после конца дела — переход/сброс/осмотр карты
+    if(a==='tab'){G.ui.tab=b.dataset.tab;touch();}
+    else if(a==='speed'){
+      const v=+b.dataset.v;
+      if(v===0)G.paused=true;
+      else{G.paused=false;G.ui.speed=v;}
+      render(true);
+    }
+    else if(a==='help')showIntro(false);
+    else if(a==='heat'){G.ui.heat=!G.ui.heat;b.classList.toggle('on',G.ui.heat);render(true);}
+    else if(a==='hire')actHire(b.dataset.type);
+    else if(a==='build')actBuild(b.dataset.key);
+    else if(a==='train')actTrain(+b.dataset.id);
+    else if(a==='recall')actRecall(+b.dataset.id);
+    else if(a==='send')actSend();
+    else if(a==='mark')actMark(+b.dataset.id,b.dataset.v);
+    else if(a==='exp')actExpertise(+b.dataset.id);
+    else if(a==='start'){$('#modalWrap').classList.add('hidden');G.paused=false;G.ui.speed=1;render(true);}
+    else if(a==='resume')closeModal();
+    else if(a==='settings')showSettings();
+    else if(a==='showmap'){$('#modalWrap').classList.add('hidden');$('#resultsBtn').classList.add('show');}
+    else if(a==='results'){$('#resultsBtn').classList.remove('show');showModal(G.overHtml,true);}
+    else if(a==='next')startCase();
+    else if(a==='hardreset'){if(confirm('Сбросить весь прогресс штаба и команд? Это необратимо.'))doHardReset();}
+    else if(a==='restart')location.reload();
+  });
+  document.addEventListener('change',e=>{
+    const b=e.target.closest('[data-action]');
+    if(!b)return;
+    if(b.dataset.action==='selunit'){
+      const id=+b.dataset.id;
+      if(b.checked)G.ui.selUnits.add(id);else G.ui.selUnits.delete(id);
+    }else if(b.dataset.action==='dur'){
+      G.ui.dur=+b.dataset.v;
+    }
+  });
+}
+
+/* ================= СТАРТ ================= */
+try{
+  campaign=loadCampaign();
+  newGame(campaign);
+  buildMap();
+  bindEvents();
+  log('📻 Штаб развёрнут. Связь устойчивая. Ждём ваших распоряжений.');
+  log(`📍 На точке последнего контакта (кв. ${coordName(G.lkp.x,G.lkp.y)}) найдены подтверждённые следы.`,'good');
+  render(true);
+  showIntro(true);
+  setInterval(tick,250);
+}catch(err){
+  document.body.innerHTML='<div style="padding:48px;max-width:520px;margin:0 auto;color:#d8e0d4;font:15px/1.5 Segoe UI,Arial,sans-serif">'+
+    '<h2 style="color:#e8a33d;font-family:Bahnschrift,Arial,sans-serif">Не удалось развернуть операцию</h2>'+
+    '<p>Карта поиска не сгенерировалась. Такое бывает крайне редко — просто попробуйте ещё раз.</p>'+
+    '<button onclick="location.reload()" style="margin-top:14px;padding:8px 16px;background:#e8a33d;color:#171207;border:none;border-radius:4px;font:inherit;font-weight:600;cursor:pointer">Начать заново</button>'+
+    '</div>';
+  console.error(err);
+}
+</script>
+</body>
+</html>

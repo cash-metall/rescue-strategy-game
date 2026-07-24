@@ -1,0 +1,14 @@
+:root {
+  --bg: #0d1210;
+  --panel: #151c17;
+  --panel2: #1b241d;
+  --line: #2a352c;
+  --amber: #e8a33d;
+  --amber-dim: #a9781f;
+  --red: #d95d4e;
+  --green: #7fb069;
+  --txt: #d8e0d4;
+  --mut: #8fa08e;
+  --mono: Consolas, "Courier New", monospace;
+  --disp: "Bahnschrift SemiCondensed", "Bahnschrift", "Arial Narrow", Arial, sans-serif;
+}

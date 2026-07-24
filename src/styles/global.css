@@ -1,0 +1,113 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font: 13px/1.45 "Segoe UI", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+/* Общие кнопки */
+.btn { border: 1px solid var(--amber-dim); color: var(--amber); border-radius: 3px; padding: 4px 10px; background: #1c2118; transition: background .15s; }
+.btn:hover:not(:disabled) { background: #2b3322; }
+.btn.on { background: var(--amber); color: #171207; border-color: var(--amber); }
+.btn.primary { background: var(--amber); color: #171207; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #f4b95c; }
+.btn.mini { padding: 2px 7px; font-size: 11px; }
+.btn.danger { border-color: #8a4038; color: #e08074; }
+.btn:disabled { opacity: .38; cursor: not-allowed; }
+h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+
+/* ===== Карта: клетки, слои, маркеры (unscoped — общий язык карты) ===== */
+.cell { position: relative; border-radius: 3px; cursor: pointer; border: 1px solid rgba(0,0,0,.35); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
+@media (hover: hover) { .cell:hover { filter: brightness(1.25); } }
+.cell.sel { outline: 2px solid var(--amber); outline-offset: -1px; z-index: 2; }
+.cell.far { opacity: .35; cursor: not-allowed; }
+.t-forest { background: #24402c; } .t-dense { background: #152a1c; } .t-meadow { background: #4d5a33; }
+.t-marsh { background: #2e4a44; } .t-hills { background: #4a4438; } .t-lake { background: #1e3a4f; } .t-base { background: #3a3326; }
+
+.cell .ter { position: absolute; left: 2px; top: 1px; width: 15px; height: 15px; background: center/contain no-repeat; opacity: .5; pointer-events: none; }
+.t-forest .ter { background-image: url(/images/forest.svg); }
+.t-dense  .ter { background-image: url(/images/dense.svg); }
+.t-meadow .ter { background-image: url(/images/meadow.svg); opacity: .62; }
+.t-marsh  .ter { background-image: url(/images/marsh.svg); opacity: .6; }
+.t-hills  .ter { background-image: url(/images/hills.svg); opacity: .6; }
+
+.cell .heat { position: absolute; inset: 0; background: #ff7840; opacity: 0; pointer-events: none; transition: opacity .3s; }
+.cell .mk { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 1px; font-size: 15px; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+.cell .mk .ar { color: var(--amber); font-weight: 700; font-size: 14px; }
+.cell .mk .cd { color: #d8c877; font-size: 12px; }
+.cell .mk img { width: 22px; height: 22px; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.85)); }
+.cell .mk img.pin { width: 18px; height: 19px; }
+.cell .mk img.trail { width: 19px; height: 19px; }
+.cell .uu { position: absolute; right: 1px; top: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: 36px; pointer-events: none; }
+.cell .uu img { width: 14px; height: 14px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.95)); }
+.cell .cv { position: absolute; left: 0; bottom: 0; width: 100%; height: 4px; background: rgba(0,0,0,.35); }
+.cell .cv i { display: block; height: 100%; background: var(--green); opacity: .85; }
+
+.pulse { animation: pulse 1.8s infinite; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+
+/* ===== Панели / карточки / вкладки ===== */
+.card { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 9px 11px; margin-bottom: 8px; }
+.card h3 { font-size: 13px; color: var(--txt); display: flex; align-items: center; gap: 7px; }
+.card .lvl { color: var(--amber); font-family: var(--mono); font-size: 11px; }
+.card p { color: var(--mut); font-size: 12px; margin: 4px 0; }
+.card .eff { color: var(--txt); font-size: 12px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.secH { font-family: var(--disp); text-transform: uppercase; letter-spacing: .1em; font-size: 11px; color: var(--mut); margin: 12px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.stTxt { font-size: 12px; color: var(--mut); }
+.stTxt b { color: var(--txt); font-weight: 600; }
+.hl { color: var(--amber); }
+
+.bar { height: 7px; background: #232d24; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--green); }
+.bar.warn i { background: var(--amber); }
+.bar.crit i { background: var(--red); }
+.ubar { width: 110px; }
+
+.clue { border-left: 3px solid var(--line); }
+.clue.mreal { border-left-color: var(--amber); }
+.clue.mjunk { border-left-color: #555; opacity: .75; }
+.clue.vreal { border-left-color: var(--green); }
+.clue .meta { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.vb { font-size: 11px; padding: 1px 6px; border-radius: 3px; font-family: var(--mono); }
+.vb.real { background: #2c4025; color: #a9d18e; }
+.vb.junk { background: #3a2f2c; color: #c9938a; }
+.vb.run { background: #33301f; color: var(--amber); }
+
+.logline { font-size: 12px; padding: 3px 0; border-bottom: 1px dashed #222b23; }
+.logline .lt { font-family: var(--mono); color: var(--mut); margin-right: 7px; font-size: 11px; }
+.logline.warn { color: #e8b34d; }
+.logline.bad { color: #e08074; }
+.logline.good { color: #a9d18e; }
+
+.pcard { display: flex; gap: 14px; align-items: flex-start; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 12px; margin: 10px 0; }
+.pcard .face { font-size: 44px; }
+.pcard .pi { font-size: 13px; }
+.pcard .pi b { color: var(--amber); }
+
+.urow { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 3px; margin-bottom: 4px; background: var(--panel2); }
+.urow label { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
+.urow.dis { opacity: .5; }
+.urow .nm { min-width: 120px; }
+.urow .inf { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.durrow { display: flex; gap: 12px; margin: 8px 0; font-size: 12px; flex-wrap: wrap; }
+.durrow label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+
+.tabrow { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tabbtn { flex: 1; padding: 8px 4px; font-family: var(--disp); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--mut); border-bottom: 2px solid transparent; position: relative; }
+.tabbtn.on { color: var(--amber); border-bottom-color: var(--amber); }
+.tabbtn .bdg { position: absolute; top: 3px; right: 6px; background: var(--red); color: #fff; font-size: 9px; border-radius: 8px; padding: 0 5px; font-family: var(--mono); }
+
+/* ===== Модалки (контент рендерится через слот — стили глобальные) ===== */
+.modalbox h2 { color: var(--amber); font-size: 19px; margin-bottom: 12px; }
+.modalbox h3 { font-size: 13px; color: var(--txt); margin: 14px 0 5px; }
+.modalbox p, .modalbox li { color: var(--txt); font-size: 13px; margin: 5px 0; }
+.modalbox ul { padding-left: 20px; }
+.modalbox .mut { color: var(--mut); }
+.endstat { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line); padding: 4px 0; font-size: 13px; }
+.endstat b { font-family: var(--mono); }
