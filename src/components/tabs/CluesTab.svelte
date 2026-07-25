@@ -3,11 +3,6 @@
   import { EXPCOST, EXPREWARD, EXPT, coordName, fmtTimeAt, effMark, dirName, dirArrow } from '../../engine';
 
   const g = $derived(game.g);
-
-  // Пока вкладка открыта, новые улики сразу считаются просмотренными (как в старой игре).
-  $effect(() => {
-    for (const c of g.clues) if (c.isNew) c.isNew = false;
-  });
 </script>
 
 {#if !g.clues.length}

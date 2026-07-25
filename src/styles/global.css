@@ -146,11 +146,13 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 .tabbtn .ico { font-size: 19px; line-height: 1.15; position: relative; display: inline-block; }
 .tabbtn .lbl { font-family: var(--disp); text-transform: uppercase; letter-spacing: .05em; font-size: 10px; line-height: 1; }
 
+/* Красная точка на иконке «Улики» при новых находках */
 .tabbtn .bdg {
-  position: absolute; top: -3px; right: -8px;
-  background: var(--red); color: #fff; font-size: 9px;
-  border-radius: 8px; padding: 0 4px; font-family: var(--mono);
-  min-width: 15px; text-align: center; line-height: 15px; height: 15px;
+  position: absolute; top: -1px; right: -5px;
+  width: 8px; height: 8px;
+  background: var(--red);
+  border-radius: 50%;
+  border: 1.5px solid var(--panel); /* отделяет от эмодзи */
 }
 
 /* ===== Модалки (контент рендерится через слот — стили глобальные) ===== */

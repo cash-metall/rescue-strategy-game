@@ -3,7 +3,8 @@
   import type { TabKey } from '../engine';
 
   const g = $derived(game.g);
-  const newClues = $derived(g.clues.filter(c => c.isNew).length);
+  // Точка горит пока есть хоть одна улика без метки (ни вручную, ни экспертизой)
+  const unsortedClues = $derived(g.clues.filter(c => !c.verdict && !c.mark).length);
   const tabs: { k: TabKey; icon: string; label: string }[] = [
     { k: 'hq',    icon: '⛺', label: 'Штаб'   },
     { k: 'units', icon: '🥾', label: 'Отряды' },
@@ -20,7 +21,7 @@
             onclick={() => g.ui.tab === t.k && game.sheet === 'tabs' ? game.closeSheet() : game.setTab(t.k)}>
       <span class="ico">
         {t.icon}
-        {#if t.k === 'clues' && newClues}<span class="bdg">{newClues}</span>{/if}
+        {#if t.k === 'clues' && unsortedClues}<span class="bdg"></span>{/if}
       </span>
       <span class="lbl">{t.label}</span>
     </button>
