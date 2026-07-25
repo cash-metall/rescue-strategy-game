@@ -97,7 +97,7 @@ class GameStore {
   backToResults(): void { this.resultsFab = false; this.openModal('results'); }
 
   // --- действия игрока ---
-  send(): void { actSend(this.g, this.sink); }
+  send(): void { if (actSend(this.g, this.sink).ok) this.sheet = 'none'; }
   build(key: BuildKey): void { actBuild(this.g, key, this.sink); }
   hire(type: UnitType): void { actHire(this.g, type, this.sink); }
   train(id: number): void { actTrain(this.g, id, this.sink); }

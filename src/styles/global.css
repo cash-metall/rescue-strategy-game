@@ -60,11 +60,11 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
   background-position: top left;
   opacity: 0.22;
 }
-.t-forest .ter { background-image: url(/images/forest.svg); }
-.t-dense  .ter { background-image: url(/images/dense.svg); }
+.t-forest .ter { background-image: url(/images/forest.svg?v=2); }
+.t-dense  .ter { background-image: url(/images/dense.svg?v=2); }
 .t-meadow .ter { background-image: url(/images/meadow.svg); }
 .t-marsh  .ter { background-image: url(/images/marsh.svg); }
-.t-hills  .ter { background-image: url(/images/hills.svg); }
+.t-hills  .ter { background-image: url(/images/hills.svg?v=2); }
 /* Волновой паттерн для озера */
 .t-lake   .ter { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12'><path d='M0,6 Q6,2 12,6 Q18,10 24,6' fill='none' stroke='%23336699' stroke-width='1.5' stroke-linecap='round'/></svg>"); }
 
@@ -78,8 +78,6 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 .cell .uu { position: absolute; right: 1px; top: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: 36px; pointer-events: none; }
 /* Юниты — инвертированы (SVG светлые, рисовались под тёмный фон) + белый ореол */
 .cell .uu img { width: 14px; height: 14px; filter: invert(1) drop-shadow(0 0 2px rgba(255,255,255,.9)); }
-.cell .cv { position: absolute; left: 0; bottom: 0; width: 100%; height: 4px; background: rgba(0,0,0,.2); }
-.cell .cv i { display: block; height: 100%; background: #2e7d1a; opacity: .85; }
 
 /* Координата ячейки при близком зуме (A1, B3 …) */
 .cell .crd {

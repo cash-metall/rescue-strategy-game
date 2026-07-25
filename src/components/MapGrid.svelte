@@ -13,6 +13,17 @@
   const upos = $derived(unitPositions(g));
   const heat = $derived(game.heat);
 
+  // Квадраты, которые прямо сейчас прочёсываются (status === 'search')
+  const searchingCells = $derived.by(() => {
+    const s = new Set<string>();
+    for (const u of g.units) {
+      if (u.status === 'search' && u.mission) {
+        s.add(`${u.mission.x},${u.mission.y}`);
+      }
+    }
+    return s;
+  });
+
   interface Mark { hq?: boolean; lkp?: boolean; victim?: boolean; trail?: boolean; arrows: { cls: string; ch: string }[]; }
 
   const marks = $derived.by(() => {
@@ -316,6 +327,7 @@
             mark={marks.get(x + ',' + y)}
             over={!!g.over}
             {zoomed}
+            isSearching={searchingCells.has(x + ',' + y)}
           />
         {/each}
       {/each}
