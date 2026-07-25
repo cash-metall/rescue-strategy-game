@@ -6,46 +6,78 @@ body {
   font: 13px/1.45 "Segoe UI", Arial, sans-serif;
   -webkit-text-size-adjust: 100%;
 }
-button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+/* На мобильных :focus не должен перекрывать явное состояние .on */
+.btn:focus:not(:focus-visible) { outline: none; }
 
 /* Общие кнопки */
 .btn { border: 1px solid var(--amber-dim); color: var(--amber); border-radius: 3px; padding: 4px 10px; background: #1c2118; transition: background .15s; }
-.btn:hover:not(:disabled) { background: #2b3322; }
+/* hover только на устройствах с настоящим hover (мышь), не на тач — иначе состояние залипает */
+@media (hover: hover) {
+  .btn:hover:not(:disabled):not(.on) { background: #2b3322; }
+  .btn.primary:hover:not(:disabled) { background: #f4b95c; }
+}
 .btn.on { background: var(--amber); color: #171207; border-color: var(--amber); }
 .btn.primary { background: var(--amber); color: #171207; font-weight: 600; }
-.btn.primary:hover:not(:disabled) { background: #f4b95c; }
 .btn.mini { padding: 2px 7px; font-size: 11px; }
 .btn.danger { border-color: #8a4038; color: #e08074; }
 .btn:disabled { opacity: .38; cursor: not-allowed; }
 h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
 
 /* ===== Карта: клетки, слои, маркеры (unscoped — общий язык карты) ===== */
-.cell { position: relative; border-radius: 3px; cursor: pointer; border: 1px solid rgba(0,0,0,.35); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
-@media (hover: hover) { .cell:hover { filter: brightness(1.25); } }
+.cell { position: relative; border-radius: 1px; cursor: pointer; border: 1px solid rgba(0,0,0,.12); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
+@media (hover: hover) { .cell:hover { filter: brightness(0.93); } }
 .cell.sel { outline: 2px solid var(--amber); outline-offset: -1px; z-index: 2; }
 .cell.far { opacity: .35; cursor: not-allowed; }
-.t-forest { background: #24402c; } .t-dense { background: #152a1c; } .t-meadow { background: #4d5a33; }
-.t-marsh { background: #2e4a44; } .t-hills { background: #4a4438; } .t-lake { background: #1e3a4f; } .t-base { background: #3a3326; }
 
-.cell .ter { position: absolute; left: 2px; top: 1px; width: 15px; height: 15px; background: center/contain no-repeat; opacity: .5; pointer-events: none; }
+/* Светлая топографическая палитра */
+.t-forest { background: #c8dba8; }
+.t-dense  { background: #9ec47a; }
+.t-meadow { background: #edf5c0; }
+.t-marsh  { background: #b4d9cf; }
+.t-hills  { background: #d9c699; }
+.t-lake   { background: #9ec8e8; }
+.t-base   { background: #f0e6d0; }
+
+/* Топознак — одиночный центрированный значок при мелком масштабе */
+.cell .ter {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px; height: 28px;
+  background: center/contain no-repeat;
+  filter: brightness(0); opacity: 0.35;
+  pointer-events: none;
+}
+/* При зуме > 1.5× — весь квадрат заполнен повторяющимися топознаками */
+.zoomed .cell .ter {
+  left: 0; top: 0; transform: none;
+  width: 100%; height: 100%;
+  background-repeat: repeat;
+  background-size: 26px;
+  background-position: top left;
+  opacity: 0.22;
+}
 .t-forest .ter { background-image: url(/images/forest.svg); }
 .t-dense  .ter { background-image: url(/images/dense.svg); }
-.t-meadow .ter { background-image: url(/images/meadow.svg); opacity: .62; }
-.t-marsh  .ter { background-image: url(/images/marsh.svg); opacity: .6; }
-.t-hills  .ter { background-image: url(/images/hills.svg); opacity: .6; }
+.t-meadow .ter { background-image: url(/images/meadow.svg); }
+.t-marsh  .ter { background-image: url(/images/marsh.svg); }
+.t-hills  .ter { background-image: url(/images/hills.svg); }
+/* Волновой паттерн для озера */
+.t-lake   .ter { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12'><path d='M0,6 Q6,2 12,6 Q18,10 24,6' fill='none' stroke='%23336699' stroke-width='1.5' stroke-linecap='round'/></svg>"); }
 
-.cell .heat { position: absolute; inset: 0; background: #ff7840; opacity: 0; pointer-events: none; transition: opacity .3s; }
-.cell .mk { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 1px; font-size: 15px; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
-.cell .mk .ar { color: var(--amber); font-weight: 700; font-size: 14px; }
-.cell .mk .cd { color: #d8c877; font-size: 12px; }
-.cell .mk img { width: 22px; height: 22px; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.85)); }
+.cell .heat { position: absolute; inset: 0; background: #e05020; opacity: 0; pointer-events: none; transition: opacity .3s; }
+.cell .mk { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 1px; font-size: 15px; pointer-events: none; text-shadow: 0 1px 3px rgba(255,255,255,.8), 0 1px 2px rgba(0,0,0,.5); }
+.cell .mk .ar { color: #9a1e1e; font-weight: 800; font-size: 14px; text-shadow: 0 0 3px rgba(255,255,255,.9); }
+.cell .mk .cd { color: #5a4810; font-size: 12px; }
+.cell .mk img { width: 22px; height: 22px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
 .cell .mk img.pin { width: 18px; height: 19px; }
 .cell .mk img.trail { width: 19px; height: 19px; }
 .cell .uu { position: absolute; right: 1px; top: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: 36px; pointer-events: none; }
-.cell .uu img { width: 14px; height: 14px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.95)); }
-.cell .cv { position: absolute; left: 0; bottom: 0; width: 100%; height: 4px; background: rgba(0,0,0,.35); }
-.cell .cv i { display: block; height: 100%; background: var(--green); opacity: .85; }
+/* Юниты — инвертированы (SVG светлые, рисовались под тёмный фон) + белый ореол */
+.cell .uu img { width: 14px; height: 14px; filter: invert(1) drop-shadow(0 0 2px rgba(255,255,255,.9)); }
+.cell .cv { position: absolute; left: 0; bottom: 0; width: 100%; height: 4px; background: rgba(0,0,0,.2); }
+.cell .cv i { display: block; height: 100%; background: #2e7d1a; opacity: .85; }
 
 .pulse { animation: pulse 1.8s infinite; }
 @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
@@ -98,10 +130,28 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 .durrow { display: flex; gap: 12px; margin: 8px 0; font-size: 12px; flex-wrap: wrap; }
 .durrow label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
 
-.tabrow { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); }
-.tabbtn { flex: 1; padding: 8px 4px; font-family: var(--disp); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--mut); border-bottom: 2px solid transparent; position: relative; }
-.tabbtn.on { color: var(--amber); border-bottom-color: var(--amber); }
-.tabbtn .bdg { position: absolute; top: 3px; right: 6px; background: var(--red); color: #fff; font-size: 9px; border-radius: 8px; padding: 0 5px; font-family: var(--mono); }
+.tabrow { display: flex; background: var(--panel); }
+
+/* Кнопка вкладки: иконка сверху, подпись снизу — стандарт мобильного bottom nav */
+.tabbtn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 6px 2px 7px; position: relative;
+  color: var(--mut);
+  border-top: 2px solid rgba(255,255,255,.07);  /* разделитель на всех кнопках */
+  transition: color .12s;
+}
+.tabbtn.on { color: var(--amber); border-top-color: var(--amber); } /* активная — янтарная черта сверху */
+.tabbtn:active { color: #c8d4c4; }
+
+.tabbtn .ico { font-size: 19px; line-height: 1.15; position: relative; display: inline-block; }
+.tabbtn .lbl { font-family: var(--disp); text-transform: uppercase; letter-spacing: .05em; font-size: 10px; line-height: 1; }
+
+.tabbtn .bdg {
+  position: absolute; top: -3px; right: -8px;
+  background: var(--red); color: #fff; font-size: 9px;
+  border-radius: 8px; padding: 0 4px; font-family: var(--mono);
+  min-width: 15px; text-align: center; line-height: 15px; height: 15px;
+}
 
 /* ===== Модалки (контент рендерится через слот — стили глобальные) ===== */
 .modalbox h2 { color: var(--amber); font-size: 19px; margin-bottom: 12px; }

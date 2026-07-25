@@ -31,8 +31,10 @@
       </p>
       <div class="row">
         <span>
-          <button class="btn mini" class:on={c.mark === 'real'} disabled={!!c.verdict} onclick={() => game.mark(c.id, 'real')}>📌 Улика</button>
-          <button class="btn mini" class:on={c.mark === 'junk'} disabled={!!c.verdict} onclick={() => game.mark(c.id, 'junk')}>🗑 Мусор</button>
+          <button class="btn mini" class:on={c.mark === 'real'} disabled={!!c.verdict}
+                  onclick={(e) => { game.mark(c.id, 'real'); (e.currentTarget as HTMLElement).blur(); }}>📌 Улика</button>
+          <button class="btn mini" class:on={c.mark === 'junk'} disabled={!!c.verdict}
+                  onclick={(e) => { game.mark(c.id, 'junk'); (e.currentTarget as HTMLElement).blur(); }}>🗑 Мусор</button>
         </span>
         {#if canExp}
           <button class="btn mini" disabled={g.funds < EXPCOST} onclick={() => game.expertise(c.id)}>🔬 Экспертиза ({EXPT[g.buildings.carto]} мин · {EXPCOST} ₽)</button>
