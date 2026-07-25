@@ -9,9 +9,9 @@
     arrows: { cls: string; ch: string }[];
   }
 
-  let { cell, sel, far, heat, units, mark, over }: {
+  let { cell, sel, far, heat, units, mark, over, zoomed }: {
     cell: Cell; sel: boolean; far: boolean; heat: number;
-    units?: UnitType[]; mark?: Mark; over: boolean;
+    units?: UnitType[]; mark?: Mark; over: boolean; zoomed: boolean;
   } = $props();
 
   const title = $derived(
@@ -27,7 +27,8 @@
 
 <div class="cell t-{cell.terrain}" class:sel class:far {title}
      role="button" tabindex="-1"
-     onclick={() => game.select(cell.x, cell.y)} onkeydown={onKey}>
+     data-cx={cell.x} data-cy={cell.y}
+     onkeydown={onKey}>
   <span class="ter"></span>
   <div class="heat" style:opacity={heat * 0.5}></div>
   <div class="mk">
@@ -41,4 +42,5 @@
     {#if units}{#each units as t, i (i)}<img src="{IMG}{TYPES[t].svg}" alt={t} />{/each}{/if}
   </div>
   <div class="cv"><i style:width="{cell.coverage}%"></i></div>
+  {#if zoomed}<span class="crd">{coordName(cell.x, cell.y)}</span>{/if}
 </div>

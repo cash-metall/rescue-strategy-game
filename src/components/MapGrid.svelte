@@ -9,7 +9,7 @@
   const XS = [...Array(W).keys()];
   const YS = [...Array(H).keys()];
 
-  const g = $derived(game.g);
+  const g    = $derived(game.g);
   const upos = $derived(unitPositions(g));
   const heat = $derived(game.heat);
 
@@ -42,12 +42,14 @@
   let scale = $state(1);
   let tx    = $state(0);
   let ty    = $state(0);
+  let wrapW = $state(0);
+  let wrapH = $state(0);
+
   const zoomed = $derived(scale > 1.5);
 
   let wrapEl: HTMLElement;
   let gridEl: HTMLElement;
 
-  /** Применить зум вокруг точки (cx, cy) в координатах wrapEl */
   function applyZoom(newScale: number, cx: number, cy: number) {
     newScale = Math.min(6, Math.max(0.28, newScale));
     const ratio = newScale / scale;
@@ -59,6 +61,8 @@
   function resetView() {
     if (!wrapEl || !gridEl) return;
     const wr = wrapEl.getBoundingClientRect();
+    wrapW = wr.width;
+    wrapH = wr.height;
     const gw = gridEl.offsetWidth;
     const gh = gridEl.offsetHeight;
     const s  = Math.min(wr.width / gw, wr.height / gh) * 0.96;
@@ -67,37 +71,83 @@
     ty = (wr.height - gh * s) / 2;
   }
 
-  onMount(() => { resetView(); });
+  onMount(() => {
+    resetView();
+    const ro = new ResizeObserver(() => {
+      if (!wrapEl) return;
+      wrapW = wrapEl.clientWidth;
+      wrapH = wrapEl.clientHeight;
+    });
+    ro.observe(wrapEl);
+    return () => ro.disconnect();
+  });
 
-  // ── Мышь / тач: перетаскивание ─────────────────────────────────────────────
-  let dragging = false;
-  let didDrag  = false;
+  // ── Геометрия сетки ─────────────────────────────────────────────────────────
+  const CELL_PX   = 46;
+  const CELL_STEP = 48;  // 46 + 2 (gap)
+  const GRID_PAD  = 2;
+  const cellCX = (i: number) => GRID_PAD + i * CELL_STEP + CELL_PX / 2; // = 25 + 48i
+
+  // ── Sticky-метки колонок и строк ─────────────────────────────────────────────
+  interface LPos { txt: string; vx: number; vy: number; }
+
+  const colLabels = $derived.by((): LPos[] => {
+    if (scale < 0.35) return [];
+    const out: LPos[] = [];
+    for (let x = 0; x < W; x++) {
+      const cellL = tx + (GRID_PAD + x * CELL_STEP) * scale;
+      const cellR = cellL + CELL_PX * scale;
+      if (cellR < -10 || cellL > wrapW + 10) continue;
+      const vx = tx + cellCX(x) * scale;
+      const vy = Math.max(4, Math.min(ty + GRID_PAD * scale, wrapH - 22));
+      out.push({ txt: COLS[x], vx, vy });
+    }
+    return out;
+  });
+
+  const rowLabels = $derived.by((): LPos[] => {
+    if (scale < 0.35) return [];
+    const out: LPos[] = [];
+    for (let y = 0; y < H; y++) {
+      const cellT = ty + (GRID_PAD + y * CELL_STEP) * scale;
+      const cellB = cellT + CELL_PX * scale;
+      if (cellB < -10 || cellT > wrapH + 10) continue;
+      const vy = ty + cellCX(y) * scale;
+      const vx = Math.max(4, Math.min(tx + GRID_PAD * scale, wrapW - 22));
+      out.push({ txt: String(y + 1), vx, vy });
+    }
+    return out;
+  });
+
+  // ── Взаимодействие: единый $effect ──────────────────────────────────────────
+  //
+  // Вся логика указателя/касания сосредоточена здесь.
+  // Нет setPointerCapture, нет разных систем событий — одна точка истины.
+  //
+  // Таймер одиночного тапа (вариант А):
+  //   tap#1 → 300ms таймер → game.select()    (одиночный тап)
+  //   tap#1 → tap#2 в 260ms → отменить таймер, applyZoom()   (двойной тап)
+  //   drag  → отменить таймер, пан            (перетаскивание)
+
+  // Флаги взаимодействия (не реактивные — только для внутренней логики)
+  let pressing      = false;   // указатель нажат
+  let didDrag       = false;   // движение превысило порог
+  let activePid     = -1;      // pointerId активного касания
   let dragPx = 0, dragPy = 0, dragTx = 0, dragTy = 0;
 
-  function onPointerDown(e: PointerEvent) {
-    if (e.button !== 0) return;
-    dragging = true; didDrag = false;
-    dragPx = e.clientX; dragPy = e.clientY;
-    dragTx = tx;        dragTy = ty;
-    wrapEl.setPointerCapture(e.pointerId);
-  }
-  function onPointerMove(e: PointerEvent) {
-    if (!dragging) return;
-    const dx = e.clientX - dragPx;
-    const dy = e.clientY - dragPy;
-    if (!didDrag && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) didDrag = true;
-    if (didDrag) { tx = dragTx + dx; ty = dragTy + dy; }
-  }
-  function onPointerUp() {
-    if (!dragging) return;
-    dragging = false;
-    if (didDrag) {
-      // Блокируем клик, который браузер выстрелит после drag
-      wrapEl.addEventListener('click', (e) => e.stopPropagation(), { once: true, capture: true });
-    }
-  }
+  // Одиночный тап с задержкой
+  let tapTimer: ReturnType<typeof setTimeout> | null = null;
+  const cancelTap = () => { if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; } };
 
-  // ── Touch pinch (passive:false нужен для preventDefault) ───────────────────
+  // Двойной тап
+  let lastTapTime = 0;
+  let lastTapX    = 0;
+  let lastTapY    = 0;
+
+  // Блокировка ghost-click после drag (не после double-tap — там клик не нужен)
+  let suppressClick = false;
+
+  // Pinch zoom
   let pinching = false;
   let pinchD = 0, pinchMx = 0, pinchMy = 0;
 
@@ -105,16 +155,99 @@
     if (!wrapEl) return;
     const el = wrapEl;
 
+    // ── Pointer: пан + одиночный/двойной тап ────────────────────────────────
+
+    const onPtrDown = (e: PointerEvent) => {
+      if (e.button !== 0 || activePid !== -1) return; // только первый палец
+      activePid = e.pointerId;
+      pressing  = true;
+      didDrag   = false;
+      dragPx = e.clientX; dragPy = e.clientY;
+      dragTx = tx;        dragTy = ty;
+    };
+
+    const onPtrMove = (e: PointerEvent) => {
+      if (e.pointerId !== activePid || !pressing) return;
+      const dx = e.clientX - dragPx;
+      const dy = e.clientY - dragPy;
+      if (!didDrag && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        didDrag = true;
+        cancelTap(); // drag — отменяем ожидающий одиночный тап
+      }
+      if (didDrag) { tx = dragTx + dx; ty = dragTy + dy; }
+    };
+
+    const onPtrUp = (e: PointerEvent) => {
+      if (e.pointerId !== activePid || !pressing) return;
+      pressing      = false;
+      activePid     = -1;
+      const wasDrag = didDrag;
+      didDrag       = false;
+
+      if (wasDrag) {
+        suppressClick = true; // заглушить ghost-click после пана
+        lastTapTime   = 0;   // drag сбрасывает окно двойного тапа
+        return;
+      }
+
+      // Чистый тап — одиночный или двойной?
+      const now  = performance.now();
+      const dist = Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY);
+
+      if (now - lastTapTime < 260 && dist < 40) {
+        // ── Двойной тап: зум ×2 ────────────────────────────────────────────
+        cancelTap(); // отменяем таймер тапа #1 — ячейка не откроется
+        const r = el.getBoundingClientRect();
+        applyZoom(scale * 2, e.clientX - r.left, e.clientY - r.top);
+        lastTapTime = 0; // тройной тап — не зумит повторно
+      } else {
+        // ── Первый тап: запустить таймер 300ms ──────────────────────────────
+        // Если за это время придёт второй тап — таймер отменится (zoom).
+        // Если нет — таймер вызовет game.select().
+        lastTapTime = now;
+        lastTapX    = e.clientX;
+        lastTapY    = e.clientY;
+
+        const elAt   = document.elementFromPoint(e.clientX, e.clientY) as Element | null;
+        const cellEl = elAt?.closest?.('.cell') as HTMLElement | null;
+        if (cellEl) {
+          const cx = Number(cellEl.dataset.cx);
+          const cy = Number(cellEl.dataset.cy);
+          cancelTap(); // на случай если предыдущий таймер ещё не сработал
+          tapTimer = setTimeout(() => { tapTimer = null; game.select(cx, cy); }, 300);
+        }
+      }
+    };
+
+    const onPtrCancel = (e: PointerEvent) => {
+      if (e.pointerId !== activePid) return;
+      pressing = false; activePid = -1; didDrag = false;
+      cancelTap();
+      lastTapTime = 0;
+    };
+
+    // Ghost-click после drag — подавить. Double-tap click не нужно подавлять,
+    // т.к. onclick убран с MapCell.
+    const onClickCapture = (e: MouseEvent) => {
+      if (suppressClick) { suppressClick = false; e.stopPropagation(); }
+    };
+
+    // ── Wheel: зум колёсиком (мышь / трекпад) ───────────────────────────────
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
       applyZoom(scale * (e.deltaY < 0 ? 1.15 : 0.87), e.clientX - r.left, e.clientY - r.top);
     };
 
+    // ── Touch pinch: зум двумя пальцами ─────────────────────────────────────
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
-        pinching = true; dragging = false;
+        cancelTap();    // pinch отменяет ожидающий тап
+        pinching  = true;
+        pressing  = false;
+        activePid = -1;
+        lastTapTime = 0;
         const t = e.touches;
         const r = el.getBoundingClientRect();
         pinchD  = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
@@ -131,7 +264,6 @@
         const d  = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
         const mx = (t[0].clientX + t[1].clientX) / 2 - r.left;
         const my = (t[0].clientY + t[1].clientY) / 2 - r.top;
-        // Зум вокруг старого центра, затем сдвиг к новому
         applyZoom(scale * (d / pinchD), pinchMx, pinchMy);
         tx += mx - pinchMx;
         ty += my - pinchMy;
@@ -141,33 +273,38 @@
 
     const onTouchEnd = () => { pinching = false; };
 
-    el.addEventListener('wheel',      onWheel,      { passive: false });
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
-    el.addEventListener('touchend',   onTouchEnd);
+    el.addEventListener('pointerdown',   onPtrDown);
+    el.addEventListener('pointermove',   onPtrMove);
+    el.addEventListener('pointerup',     onPtrUp);
+    el.addEventListener('pointercancel', onPtrCancel);
+    el.addEventListener('click',         onClickCapture, { capture: true });
+    el.addEventListener('wheel',         onWheel,        { passive: false });
+    el.addEventListener('touchstart',    onTouchStart,   { passive: false });
+    el.addEventListener('touchmove',     onTouchMove,    { passive: false });
+    el.addEventListener('touchend',      onTouchEnd);
 
     return () => {
-      el.removeEventListener('wheel',      onWheel);
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove',  onTouchMove);
-      el.removeEventListener('touchend',   onTouchEnd);
+      cancelTap();
+      el.removeEventListener('pointerdown',   onPtrDown);
+      el.removeEventListener('pointermove',   onPtrMove);
+      el.removeEventListener('pointerup',     onPtrUp);
+      el.removeEventListener('pointercancel', onPtrCancel);
+      el.removeEventListener('click',         onClickCapture, true);
+      el.removeEventListener('wheel',         onWheel);
+      el.removeEventListener('touchstart',    onTouchStart);
+      el.removeEventListener('touchmove',     onTouchMove);
+      el.removeEventListener('touchend',      onTouchEnd);
     };
   });
 </script>
 
 <!-- ── Карта с пан/зум ────────────────────────────────────────────────────── -->
-<div class="mapwrap" bind:this={wrapEl}
-     onpointerdown={onPointerDown}
-     onpointermove={onPointerMove}
-     onpointerup={onPointerUp}>
-  <!-- Кнопка сброса зума — floating, не мешает карте -->
-  <button class="resetbtn" onclick={resetView} title="Вписать карту в экран">⊞</button>
+<div class="mapwrap" bind:this={wrapEl}>
+
+  <!-- Трансформируемая сетка -->
   <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})">
     <div class="grid" class:zoomed bind:this={gridEl}>
-      <div class="lbl"></div>
-      {#each XS as x (x)}<div class="lbl col">{COLS[x]}</div>{/each}
       {#each YS as y (y)}
-        <div class="lbl row">{y + 1}</div>
         {#each XS as x (x)}
           {@const cell = g.map[y][x]}
           <MapCell
@@ -178,15 +315,28 @@
             units={upos.get(x + ',' + y)}
             mark={marks.get(x + ',' + y)}
             over={!!g.over}
+            {zoomed}
           />
         {/each}
       {/each}
     </div>
   </div>
+
+  <!-- ── Sticky coordinate labels ──────────────────────────────────────────── -->
+  <div class="coord-overlay" aria-hidden="true">
+    {#each colLabels as l (l.txt)}
+      <div class="clbl ccol" style:left="{l.vx}px" style:top="{l.vy}px">{l.txt}</div>
+    {/each}
+    {#each rowLabels as l (l.txt)}
+      <div class="clbl crow" style:left="{l.vx}px" style:top="{l.vy}px">{l.txt}</div>
+    {/each}
+  </div>
+
+  <!-- Кнопка сброса зума -->
+  <button class="resetbtn" onclick={resetView} title="Вписать карту в экран">⊞</button>
 </div>
 
 <style>
-  /* ── Кнопка сброса зума (floating, правый нижний угол) ── */
   .resetbtn {
     position: absolute; bottom: 10px; right: 10px; z-index: 10;
     width: 34px; height: 34px;
@@ -200,43 +350,54 @@
   }
   .resetbtn:hover { background: rgba(20, 35, 22, 0.88); color: #fff; }
 
-  /* ── Viewport (светлая бумага) ── */
   .mapwrap {
     flex: 1; overflow: hidden; position: relative;
     touch-action: none; cursor: grab;
-    background: #e6ddc8;            /* цвет "бумаги" видно по краям */
+    background: #e6ddc8;
     -webkit-user-select: none; user-select: none;
   }
   .mapwrap:active { cursor: grabbing; }
 
-  /* ── Трансформируемый контейнер ── */
   .gridwrap {
     position: absolute; top: 0; left: 0;
     transform-origin: 0 0;
     will-change: transform;
   }
 
-  /* ── Сетка (красные линии = background через gap) ── */
   .grid {
     display: grid;
     gap: 2px;
     width: max-content;
-    grid-template-columns: 22px repeat(12, 46px);
-    grid-template-rows: 22px repeat(12, 46px);
-    background: rgba(172, 22, 22, 0.55);   /* красная сетка */
+    grid-template-columns: repeat(12, 46px);
+    grid-template-rows: repeat(12, 46px);
+    background: rgba(172, 22, 22, 0.55);
     padding: 2px;
     border: 2px solid rgba(172, 22, 22, 0.55);
     border-radius: 2px;
     box-shadow: 0 4px 24px rgba(0,0,0,.45), 0 1px 4px rgba(0,0,0,.3);
   }
 
-  /* Метки строк/колонок */
-  .lbl {
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--mono); font-size: 9px;
-    color: rgba(140, 10, 10, 0.95); font-weight: 700;
-    background: #f0e6d0;
+  .coord-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none; overflow: hidden;
+    z-index: 5;
   }
-  .lbl.col { padding-bottom: 1px; border-bottom: 1px solid rgba(172,22,22,.25); }
-  .lbl.row { padding-right: 1px; border-right:  1px solid rgba(172,22,22,.25); }
+
+  .clbl {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: rgba(130, 8, 8, 0.95);
+    background: rgba(242, 233, 210, 0.93);
+    border: 1px solid rgba(172, 22, 22, 0.28);
+    border-radius: 3px;
+    padding: 1px 4px;
+    line-height: 1.4;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,.22), 0 0 0 1px rgba(172,22,22,.10);
+  }
+
+  .clbl.ccol { transform: translateX(-50%); }
+  .clbl.crow { transform: translateY(-50%); min-width: 18px; text-align: center; }
 </style>

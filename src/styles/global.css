@@ -28,6 +28,8 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 /* ===== Карта: клетки, слои, маркеры (unscoped — общий язык карты) ===== */
 .cell { position: relative; border-radius: 1px; cursor: pointer; border: 1px solid rgba(0,0,0,.12); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
 @media (hover: hover) { .cell:hover { filter: brightness(0.93); } }
+/* Мгновенная обратная связь при нажатии — до срабатывания 300ms таймера */
+.cell:active { filter: brightness(0.84); }
 .cell.sel { outline: 2px solid var(--amber); outline-offset: -1px; z-index: 2; }
 .cell.far { opacity: .35; cursor: not-allowed; }
 
@@ -78,6 +80,15 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 .cell .uu img { width: 14px; height: 14px; filter: invert(1) drop-shadow(0 0 2px rgba(255,255,255,.9)); }
 .cell .cv { position: absolute; left: 0; bottom: 0; width: 100%; height: 4px; background: rgba(0,0,0,.2); }
 .cell .cv i { display: block; height: 100%; background: #2e7d1a; opacity: .85; }
+
+/* Координата ячейки при близком зуме (A1, B3 …) */
+.cell .crd {
+  position: absolute; top: 3px; left: 3px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  color: rgba(130, 8, 8, 0.52);
+  pointer-events: none; line-height: 1; z-index: 3;
+  letter-spacing: 0.03em;
+}
 
 .pulse { animation: pulse 1.8s infinite; }
 @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }

@@ -17,7 +17,7 @@ export const oct = (d: number): number => Math.round((((d % 360) + 360) % 360) /
 export const dirArrow = (d: number): string => ARROWS[oct(d)];
 export const dirName = (d: number): string => DIRN[oct(d)];
 
-export const COLS = 'АБВГДЕЖЗИКЛМ';
+export const COLS = 'ABCDEFGHIJKL';
 export const coordName = (x: number, y: number): string => COLS[x] + (y + 1);
 
 export const plural = (n: number, a: string, b: string, c: string): string => {
