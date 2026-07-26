@@ -313,7 +313,7 @@
 <div class="mapwrap" bind:this={wrapEl}>
 
   <!-- Трансформируемая сетка -->
-  <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})">
+  <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})" style:--s={scale}>
     <div class="grid" class:zoomed bind:this={gridEl}>
       {#each YS as y (y)}
         {#each XS as x (x)}
@@ -378,14 +378,15 @@
 
   .grid {
     display: grid;
-    gap: 2px;
+    gap: calc(2px / var(--s, 1));
     width: max-content;
     grid-template-columns: repeat(12, 46px);
     grid-template-rows: repeat(12, 46px);
     background: rgba(172, 22, 22, 0.55);
-    padding: 2px;
-    border: 2px solid rgba(172, 22, 22, 0.55);
-    border-radius: 2px;
+    padding: calc(2px / var(--s, 1));
+    border: solid rgba(172, 22, 22, 0.55);
+    border-width: calc(2px / var(--s, 1));
+    border-radius: calc(2px / var(--s, 1));
     box-shadow: 0 4px 24px rgba(0,0,0,.45), 0 1px 4px rgba(0,0,0,.3);
   }
 

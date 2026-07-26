@@ -26,7 +26,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); out
 h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
 
 /* ===== Карта: клетки, слои, маркеры (unscoped — общий язык карты) ===== */
-.cell { position: relative; border-radius: 1px; cursor: pointer; border: 1px solid rgba(0,0,0,.12); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
+.cell { position: relative; border-radius: 1px; cursor: pointer; border: calc(1px / var(--s, 1)) solid rgba(0,0,0,.12); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
 @media (hover: hover) { .cell:hover { filter: brightness(0.93); } }
 /* Мгновенная обратная связь при нажатии — до срабатывания 300ms таймера */
 .cell:active { filter: brightness(0.84); }
@@ -81,8 +81,9 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 
 /* Координата ячейки при близком зуме (A1, B3 …) */
 .cell .crd {
-  position: absolute; top: 3px; left: 3px;
-  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  position: absolute;
+  top: calc(3px / var(--s, 1)); left: calc(3px / var(--s, 1));
+  font-family: var(--mono); font-size: calc(9px / var(--s, 1)); font-weight: 700;
   color: rgba(130, 8, 8, 0.52);
   pointer-events: none; line-height: 1; z-index: 3;
   letter-spacing: 0.03em;
