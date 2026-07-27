@@ -144,9 +144,16 @@
   /* ===== Десктоп (≥900px): двухколоночная раскладка ===== */
   @media (min-width: 900px) {
     .stage { flex-direction: row; }
-    .mapcol { flex: 0 0 auto; border-right: 1px solid var(--line); padding-bottom: 0; }
-    .cellhost { position: static; transform: none; max-height: 42vh; border-top: 1px solid var(--line); border-radius: 0; padding-bottom: 0; transition: none; box-shadow: none; background: var(--panel); }
-    .side { display: flex; flex-direction: column; flex: 1; min-width: 380px; min-height: 0; }
+    /* ВАЖНО: не ставить сюда `flex: 0 0 auto` — карта и HUD абсолютны, ширину по контенту
+       задавал бы текст CellSheet, и колонка скакала бы на каждом тике. Базовое `flex: 1` +
+       `min-width: 0` (см. выше) = колонка резиновая и забирает остаток строки. */
+    .mapcol { border-right: 1px solid var(--line); padding-bottom: 0; }
+    .cellhost { position: static; transform: none; flex: 0 0 auto; max-height: 42vh; min-height: 0; border-top: 1px solid var(--line); border-radius: 0; padding-bottom: 0; transition: none; box-shadow: none; background: var(--panel); }
+    /* перебиваем мобильное `.open` (специфичность 0,2,0) — здесь шторок нет */
+    .panelhost.open, .cellhost.open { transform: none; }
+    /* «ручка» для свайпа — только на телефоне */
+    .panelhost::before, .cellhost::before { display: none; }
+    .side { display: flex; flex-direction: column; flex: 0 0 auto; width: clamp(360px, 26vw, 480px); min-width: 0; min-height: 0; }
     .side :global(.tabrow) { position: static; padding-bottom: 0; border-bottom: 1px solid var(--line); }
     .panelhost { position: static; transform: none; max-height: none; flex: 1; overflow-y: auto; padding-bottom: 0; transition: none; border-top: none; border-radius: 0; box-shadow: none; }
     .backdrop { display: none; }

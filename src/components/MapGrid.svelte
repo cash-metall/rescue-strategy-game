@@ -61,12 +61,16 @@
   let wrapEl: HTMLElement;
   let gridEl: HTMLElement;
 
+  // Игрок сам менял вид (зум/пан)? Тогда resize не сбрасывает его масштаб.
+  let userAdjusted = false;
+
   function applyZoom(newScale: number, cx: number, cy: number) {
     newScale = Math.min(6, Math.max(0.28, newScale));
     const ratio = newScale / scale;
     tx = cx - (cx - tx) * ratio;
     ty = cy - (cy - ty) * ratio;
     scale = newScale;
+    userAdjusted = true;
   }
 
   function resetView() {
@@ -80,14 +84,28 @@
     scale = s;
     tx = (wr.width  - gw * s) / 2;
     ty = (wr.height - gh * s) / 2;
+    userAdjusted = false;
   }
 
   onMount(() => {
     resetView();
+    // Область карты меняет размер по двум разным поводам:
+    //   • меняется ВЫСОТА — выросла/сжалась панель квадрата снизу, на телефоне уехала
+    //     адресная строка. Вид не трогаем вообще: карта абсолютна и привязана к левому
+    //     верхнему углу, поэтому без вмешательства она остаётся ровно на месте.
+    //   • меняется ШИРИНА — ресайз окна или смена брейкпоинта. Здесь имеет смысл вписать
+    //     карту заново, но только если игрок сам не выставил зум/пан.
+    let prevW = wrapW;
     const ro = new ResizeObserver(() => {
       if (!wrapEl) return;
-      wrapW = wrapEl.clientWidth;
-      wrapH = wrapEl.clientHeight;
+      const w = wrapEl.clientWidth, h = wrapEl.clientHeight;
+      if (!w || !h) return;                    // контейнер скрыт — считать нечего
+      wrapW = w; wrapH = h;                    // подписи координат обновляем всегда
+      const widthChanged = Math.abs(w - prevW) > 0.5;
+      prevW = w;
+      if (!widthChanged) return;               // изменилась только высота — карта стоит на месте
+      if (pressing || pinching) return;        // не дёргать вид во время жеста
+      if (!userAdjusted) resetView();
     });
     ro.observe(wrapEl);
     return () => ro.disconnect();
@@ -185,7 +203,7 @@
         didDrag = true;
         cancelTap(); // drag — отменяем ожидающий одиночный тап
       }
-      if (didDrag) { tx = dragTx + dx; ty = dragTy + dy; }
+      if (didDrag) { tx = dragTx + dx; ty = dragTy + dy; userAdjusted = true; }
     };
 
     const onPtrUp = (e: PointerEvent) => {
