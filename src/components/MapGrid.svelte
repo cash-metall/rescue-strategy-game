@@ -59,7 +59,6 @@
   const zoomed = $derived(scale > 1.5);
 
   let wrapEl: HTMLElement;
-  let gridEl: HTMLElement;
 
   // Игрок сам менял вид (зум/пан)? Тогда resize не сбрасывает его масштаб.
   let userAdjusted = false;
@@ -74,16 +73,15 @@
   }
 
   function resetView() {
-    if (!wrapEl || !gridEl) return;
+    if (!wrapEl) return;
     const wr = wrapEl.getBoundingClientRect();
     wrapW = wr.width;
     wrapH = wr.height;
-    const gw = gridEl.offsetWidth;
-    const gh = gridEl.offsetHeight;
-    const s  = Math.min(wr.width / gw, wr.height / gh) * 0.96;
+    // Размер сетки постоянен (GRID_PX), поэтому вписывание не зависит от текущего зума.
+    const s = Math.min(wr.width / GRID_PX, wr.height / GRID_PX) * 0.96;
     scale = s;
-    tx = (wr.width  - gw * s) / 2;
-    ty = (wr.height - gh * s) / 2;
+    tx = (wr.width  - GRID_PX * s) / 2;
+    ty = (wr.height - GRID_PX * s) / 2;
     userAdjusted = false;
   }
 
@@ -112,10 +110,19 @@
   });
 
   // ── Геометрия сетки ─────────────────────────────────────────────────────────
+  // Зазора между клетками нет (gap: 0): линии сетки рисует SVG-слой поверх ячеек
+  // штрихом с vector-effect: non-scaling-stroke. Поэтому шаг = размеру клетки,
+  // а размер сетки постоянен при любом зуме.
   const CELL_PX   = 46;
-  const CELL_STEP = 48;  // 46 + 2 (gap)
-  const GRID_PAD  = 2;
-  const cellCX = (i: number) => GRID_PAD + i * CELL_STEP + CELL_PX / 2; // = 25 + 48i
+  const CELL_STEP = CELL_PX;      // gap = 0 — шаг равен размеру ячейки
+  const GRID_PAD  = 0;            // у .grid больше нет ни padding, ни border
+  const GRID_PX   = W * CELL_PX;  // 552 — постоянный размер сетки
+  const cellCX = (i: number) => GRID_PAD + i * CELL_STEP + CELL_PX / 2; // = 23 + 46i
+
+  // Линии сетки: 13 вертикалей + 13 горизонталей одним путём. От зума не зависит.
+  const LINES_D = [...Array(W + 1).keys()].map((i) => `M${i * CELL_PX},0V${GRID_PX}`)
+    .concat([...Array(H + 1).keys()].map((i) => `M0,${i * CELL_PX}H${GRID_PX}`))
+    .join(' ');
 
   // ── Sticky-метки колонок и строк ─────────────────────────────────────────────
   interface LPos { txt: string; vx: number; vy: number; }
@@ -332,13 +339,12 @@
 
   <!-- Трансформируемая сетка -->
   <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})" style:--s={scale}>
-    <div class="grid" class:zoomed bind:this={gridEl}>
+    <div class="grid" class:zoomed>
       {#each YS as y (y)}
         {#each XS as x (x)}
           {@const cell = g.map[y][x]}
           <MapCell
             {cell}
-            sel={!!g.ui.sel && g.ui.sel.x === x && g.ui.sel.y === y}
             far={!inRange(g, cell) && targetable(cell)}
             heat={heat ? heat[y][x] : 0}
             units={upos.get(x + ',' + y)}
@@ -350,6 +356,17 @@
         {/each}
       {/each}
     </div>
+
+    <!-- Линии сетки и рамка выбора: штрих в экранных пикселях, не зависит от зума -->
+    <svg class="lines" width={GRID_PX} height={GRID_PX}
+         viewBox="0 0 {GRID_PX} {GRID_PX}" aria-hidden="true">
+      <path class="gl" d={LINES_D} />
+      {#if g.ui.sel}
+        <rect class="selframe"
+              x={g.ui.sel.x * CELL_PX} y={g.ui.sel.y * CELL_PX}
+              width={CELL_PX} height={CELL_PX} />
+      {/if}
+    </svg>
   </div>
 
   <!-- ── Sticky coordinate labels ──────────────────────────────────────────── -->
@@ -391,21 +408,43 @@
   .gridwrap {
     position: absolute; top: 0; left: 0;
     transform-origin: 0 0;
-    will-change: transform;
+    /* Без will-change: иначе Chrome держит слой на устаревшем raster scale,
+       и тонкие линии при зуме размываются в ноль. */
   }
 
   .grid {
     display: grid;
-    gap: calc(2px / var(--s, 1));
+    gap: 0;
     width: max-content;
     grid-template-columns: repeat(12, 46px);
     grid-template-rows: repeat(12, 46px);
+    /* Фон не виден (клетки вплотную), но страхует от волосяных швов при дробном смещении */
     background: rgba(172, 22, 22, 0.55);
-    padding: calc(2px / var(--s, 1));
-    border: solid rgba(172, 22, 22, 0.55);
-    border-width: calc(2px / var(--s, 1));
-    border-radius: calc(2px / var(--s, 1));
     box-shadow: 0 4px 24px rgba(0,0,0,.45), 0 1px 4px rgba(0,0,0,.3);
+  }
+
+  /* Сетка рисуется поверх клеток штрихом в экранных пикселях: толщина линии
+     одинакова на любом зуме и линия не может «схлопнуться» в 0 пикселей. */
+  .lines {
+    position: absolute; left: 0; top: 0;
+    overflow: visible;   /* внешняя половина штриха по периметру видна */
+    pointer-events: none;
+    z-index: 4;          /* поверх клеток, под .coord-overlay (z-index: 5) */
+  }
+
+  .lines .gl {
+    fill: none;
+    stroke: rgba(172, 22, 22, 0.55);
+    stroke-width: 2px;
+    stroke-linecap: square;             /* без выемок в углах периметра */
+    vector-effect: non-scaling-stroke;
+  }
+
+  .lines .selframe {
+    fill: none;
+    stroke: var(--amber);
+    stroke-width: 2.5px;
+    vector-effect: non-scaling-stroke;
   }
 
   .coord-overlay {

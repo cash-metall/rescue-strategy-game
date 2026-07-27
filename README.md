@@ -3,6 +3,8 @@
 **Браузерная игра-стратегия про поисково-спасательную операцию.**
 Разверните штаб, соберите отряды и найдите пропавшего в лесу, пока не истекло время. 🧭
 
+[![Играть](https://img.shields.io/badge/▶%20ИГРАТЬ-b81414?style=for-the-badge&labelColor=1c2118)](https://cash-metall.github.io/rescue-strategy-game/)
+
 ![Svelte 5](https://img.shields.io/badge/Svelte-5-ff3e00?logo=svelte&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-⚡-646cff?logo=vite&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)

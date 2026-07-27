@@ -9,8 +9,8 @@
     arrows: { cls: string; ch: string }[];
   }
 
-  let { cell, sel, far, heat, units, mark, over, zoomed, isSearching }: {
-    cell: Cell; sel: boolean; far: boolean; heat: number;
+  let { cell, far, heat, units, mark, over, zoomed, isSearching }: {
+    cell: Cell; far: boolean; heat: number;
     units?: UnitType[]; mark?: Mark; over: boolean; zoomed: boolean;
     isSearching: boolean;
   } = $props();
@@ -32,7 +32,7 @@
   }
 </script>
 
-<div class="cell t-{cell.terrain}" class:sel class:far {title}
+<div class="cell t-{cell.terrain}" class:far {title}
      role="button" tabindex="-1"
      data-cx={cell.x} data-cy={cell.y}
      onkeydown={onKey}>

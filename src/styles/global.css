@@ -26,11 +26,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); out
 h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
 
 /* ===== Карта: клетки, слои, маркеры (unscoped — общий язык карты) ===== */
-.cell { position: relative; border-radius: 1px; cursor: pointer; border: calc(1px / var(--s, 1)) solid rgba(0,0,0,.12); overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
+/* Границы клеток и рамку выбранной клетки рисует SVG-слой .lines в MapGrid —
+   своих border/outline у .cell нет: при зуме они становятся подпиксельными и мерцают. */
+.cell { position: relative; border-radius: 0; cursor: pointer; overflow: hidden; aspect-ratio: 1; touch-action: manipulation; }
 @media (hover: hover) { .cell:hover { filter: brightness(0.93); } }
 /* Мгновенная обратная связь при нажатии — до срабатывания 300ms таймера */
 .cell:active { filter: brightness(0.84); }
-.cell.sel { outline: 2px solid var(--amber); outline-offset: -1px; z-index: 2; }
 .cell.far { opacity: .35; cursor: not-allowed; }
 
 /* Светлая топографическая палитра */
