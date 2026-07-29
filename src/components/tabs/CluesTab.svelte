@@ -15,7 +15,7 @@
     {@const canExp = g.buildings.carto >= 1 && !c.exp}
     <div class="card clue {cls}">
       <div class="meta">
-        кв. {coordName(c.x, c.y)} · {fmtTimeAt(c.tFound)}{c.photo ? ' · 📷 фото с дрона' : ''}
+        {c.noPos ? 'без координат' : 'кв. ' + coordName(c.x, c.y)} · {fmtTimeAt(c.tFound)}{c.noPos ? ' · 🛰️ навигатор сел' : ''}
         {#if c.verdict === 'real'}<span class="vb real">✓ подтверждено</span>
         {:else if c.verdict === 'junk'}<span class="vb junk">✗ не относится</span>
         {:else if c.exp === 'run'}<span class="vb run">🔬 анализ…</span>

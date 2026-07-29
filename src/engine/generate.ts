@@ -1,9 +1,9 @@
-import type { Game, Campaign, Cell, Pt, Profile, MapObject, UnitType } from './types';
+import type { Game, Campaign, Cell, Pt, Profile, MapObject, UnitType, ObjClass } from './types';
 import { W, H, CLR, PROFILES, ITEMS, TYPES } from './constants';
 import { ri, rf, rnd, pick } from './rng';
 import { clamp, dist, cheb, angleTo } from './util';
 
-interface Tpl { text: string; photoText: string; vis: number; air: number; }
+interface Tpl { text: string; photoText: string; vis: number; air: number; fromAir: boolean; cls: ObjClass; }
 
 export function newGame(camp: Campaign): Game {
   for (let att = 0; att < 200; att++) {
@@ -15,21 +15,21 @@ export function newGame(camp: Campaign): Game {
 
 export function tryGen(camp: Campaign): Game | null {
   const g: Game = {
-    t: 0, funds: 250, incAcc: 0, spent: 0, over: null, paused: true,
+    t: 0, funds: 250, incAcc: 0, spent: 0, over: null, medicsGone: false, quest: null,
     weather: 'clear', weatherNext: ri(150, 320), nextEvent: ri(200, 300),
     warned: { w60: false, w35: false, w15: false },
     buildings: { ...camp.buildings },
-    units: [], clues: [], log: [], nameCnt: { ...camp.nameCnt },
-    expRuns: [], expQueue: [], objId: 1, clueId: 1, unitId: 1,
+    units: [], clues: [], sightings: [], log: [], nameCnt: { ...camp.nameCnt },
+    expRuns: [], expQueue: [], objId: 1, clueId: 1, unitId: 1, sightId: 1,
     stats: { cluesTotal: 0, cluesReal: 0 },
-    ui: { tab: 'hq', sel: null, selUnits: new Set<number>(), dur: 80, heat: false, speed: 1 },
+    ui: { tab: 'hq', sel: null, selUnits: new Set<number>(), heat: false, speed: 1 },
     map: [], profile: null as unknown as Profile, lkp: { x: 0, y: 0 }, path: [],
     trailSet: new Set<string>(), victim: { x: 0, y: 0, strength: 100, found: false },
     hq: { x: 0, y: 0 }, drainBase: 0,
   };
   // --- карта ---
   const map: Cell[][] = [];
-  for (let y = 0; y < H; y++) { map.push([]); for (let x = 0; x < W; x++) map[y].push({ x, y, terrain: 'forest', coverage: 0, objects: [] }); }
+  for (let y = 0; y < H; y++) { map.push([]); for (let x = 0; x < W; x++) map[y].push({ x, y, terrain: 'forest', coverage: 0, shown: 0, objects: [] }); }
   const blob = (terr: Cell['terrain'], seeds: number, size: number) => {
     for (let i = 0; i < seeds; i++) {
       let cx = ri(0, W - 1), cy = ri(0, H - 1);
@@ -80,24 +80,23 @@ export function tryGen(camp: Campaign): Game | null {
   map[g.hq.y][g.hq.x].terrain = 'base';
   g.drainBase = 100 / (1600 + 150 * dist(g.hq, g.victim));
   // --- артефакты на маршруте ---
-  const wrongColor = () => pick(CLR.filter(c => c.n !== color.n));
-  const wrongSize = () => { let s: number; do { s = ri(36, 45); } while (s === size); return s; };
-  const freshTxt = (tier: number) => tier < 0.34 ? 'примерно суточной давности' : (tier < 0.7 ? 'довольно свежий' : 'совсем свежий');
-  const artTemplates: Array<(tier: number) => Tpl> = [
-    tier => ({ text: `Чёткий след обуви ${size} размера, ${freshTxt(tier)}`, photoText: 'На фото с дрона: следы на земле, размер не разобрать', vis: .5, air: .1 }),
-    tier => ({ text: `Обрывок ткани ${color.g} цвета на ветке, ${freshTxt(tier)}`, photoText: `На фото с дрона: лоскут ткани ${color.g} цвета на кустах`, vis: .7, air: .5 }),
-    tier => ({ text: `Обёртка от шоколадного батончика, ${freshTxt(tier) === 'совсем свежий' ? 'совсем свежая' : 'не выцвела — брошена недавно'}`, photoText: 'На фото с дрона: что-то блестит в траве', vis: .8, air: .3 }),
-    tier => ({ text: `Нитки ${color.g} цвета на колючих кустах`, photoText: `На фото с дрона: цветные нитки на кустарнике, оттенок похож на ${color.n}`, vis: .6, air: .2 }),
-    () => ({ text: `Примятая трава и свежесломанные ветки — здесь кто-то проходил`, photoText: 'На фото с дрона: полоса примятой травы', vis: .6, air: .4 }),
+  // Текст артефакта НЕ содержит давности: её читает только ГСН (см. createClue).
+  const artTemplates: Array<() => Tpl> = [
+    () => ({ text: `Чёткий след обуви ${size} размера`, photoText: 'На фото с воздуха: следы на земле, размер не разобрать', vis: .5, air: .1, fromAir: false, cls: 'other' }),
+    () => ({ text: `Обрывок ткани ${color.g} цвета на ветке`, photoText: `На фото с воздуха: лоскут ткани ${color.g} цвета на кустах`, vis: .7, air: .5, fromAir: true, cls: 'bright' }),
+    () => ({ text: `Обёртка от шоколадного батончика, не выцвела`, photoText: 'На фото с воздуха: что-то блестит в траве', vis: .8, air: .3, fromAir: true, cls: 'other' }),
+    () => ({ text: `Нитки ${color.g} цвета на колючих кустах`, photoText: `На фото с воздуха: цветные нитки на кустарнике, оттенок похож на ${color.n}`, vis: .6, air: .2, fromAir: false, cls: 'bright' }),
+    () => ({ text: `Примятая трава и свежесломанные ветки — здесь кто-то проходил`, photoText: 'На фото с воздуха: полоса примятой травы', vis: .6, air: .4, fromAir: true, cls: 'other' }),
   ];
   let artCount = 0;
   const addArt = (node: Pt, i: number) => {
     const next = g.path[i + 1];
     const dirTrue = next ? angleTo(node, next) : null;
     const tier = i / Math.max(1, g.path.length - 1);
-    const t = pick(artTemplates)(tier);
+    const t = pick(artTemplates)();
     g.map[node.y][node.x].objects.push({
       id: g.objId++, kind: 'art', text: t.text, photoText: t.photoText, vis: t.vis, air: t.air,
+      fromAir: t.fromAir, cls: t.cls,
       dirTrue, dirShow: dirTrue == null ? null : (dirTrue + rf(-25, 25) + 360) % 360, tier, found: false,
     });
     artCount++;
@@ -109,35 +108,14 @@ export function tryGen(camp: Campaign): Game | null {
     if (rnd() < 0.25) addArt(node, i);
   });
   if (artCount < 4) return null;
-  // --- мусор по всей карте ---
-  const junkTemplates: Array<() => Tpl> = [
-    () => ({ text: `След обуви ${wrongSize()} размера, старый, залит водой`, photoText: 'На фото с дрона: следы на земле, размер не разобрать', vis: .5, air: .1 }),
-    () => ({ text: `Свежий след обуви ${wrongSize()} размера`, photoText: 'На фото с дрона: следы на земле, размер не разобрать', vis: .5, air: .1 }),
-    () => { const c = wrongColor(); return { text: `Обрывок ткани ${c.g} цвета, выцветший на солнце`, photoText: `На фото с дрона: лоскут ткани ${c.g} цвета`, vis: .7, air: .5 }; },
-    () => ({ text: 'Ржавая консервная банка', photoText: 'На фото с дрона: металлический блеск в траве', vis: .8, air: .3 }),
-    () => ({ text: 'Старое кострище, углям не меньше месяца', photoText: 'На фото с дрона: тёмное пятно кострища', vis: .9, air: .6 }),
-    () => ({ text: 'Пластиковая бутылка, помутневшая от времени', photoText: 'На фото с дрона: пластиковый мусор', vis: .8, air: .4 }),
-    () => ({ text: 'Следы крупного животного — лось или кабан', photoText: 'На фото с дрона: цепочка следов, явно не человеческих', vis: .5, air: .15 }),
-    () => ({ text: 'Свежее кострище и банки — похоже, стоянка охотников', photoText: 'На фото с дрона: свежее кострище', vis: .9, air: .6 }),
-    () => { const c = wrongColor(); return { text: `Вязаная перчатка ${c.g} цвета, отсыревшая`, photoText: `На фото с дрона: небольшой предмет ${c.g} цвета`, vis: .6, air: .3 }; },
-  ];
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const c = g.map[y][x];
-    if (c.terrain === 'lake' || c.terrain === 'base') continue;
-    let n = (rnd() < 0.5 ? 1 : 0) + (rnd() < 0.18 ? 1 : 0);
-    while (n-- > 0) {
-      const t = pick(junkTemplates)();
-      c.objects.push({
-        id: g.objId++, kind: 'junk', text: t.text, photoText: t.photoText, vis: t.vis, air: t.air,
-        dirTrue: null, dirShow: rf(0, 360), tier: 0, found: false,
-      });
-    }
-  }
+  // Мусор физически на карте НЕ раскладывается: он виртуальный и рождается в момент осмотра
+  // из junkTemplates, количеством по уровню группы (docs/units.md).
   // --- команды переносятся из кампании (отдохнувшие, без заданий) ---
   for (const r of camp.roster) {
     g.units.push({
       id: g.unitId++, type: r.type, gen: TYPES[r.type].gen, name: r.name, level: r.level,
       fatigue: 0, status: 'idle', phaseStart: 0, phaseEnd: 0, mission: null,
+      away: null, busyUntil: 0, restNeed: 0, passengers: [],
     });
   }
   // --- стартовая улика на ТПК ---
@@ -145,13 +123,29 @@ export function tryGen(camp: Campaign): Game | null {
   if (!startArt) return null;
   startArt.found = true;
   g.map[lkp.y][lkp.x].coverage = 25;
+  g.map[lkp.y][lkp.x].shown = 25;
   g.clues.push({
     id: g.clueId++, x: lkp.x, y: lkp.y, text: startArt.text, kind: 'art',
-    dirShow: startArt.dirTrue, photo: false, tFound: 0, mark: 'real', verdict: 'real', exp: 'done', isNew: false, paid: true,
+    dirShow: startArt.dirTrue, noPos: false, tFound: 0, mark: 'real', verdict: 'real', exp: 'done', isNew: false,
   });
-  g.stats.cluesTotal = 1; g.stats.cluesReal = 1;
+  // Стартовая улика — данность, а не заслуга игрока: в cluesReal она не идёт,
+  // иначе штабные события сразу считали бы дело успешным (см. randomEvent).
+  g.stats.cluesTotal = 1; g.stats.cluesReal = 0;
   return g;
 }
+
+/** Шаблоны «мусора». Экспортируются: объекты рождаются в момент осмотра, а не при генерации карты. */
+export const junkTemplates: Array<() => Tpl> = [
+  () => ({ text: `След обуви ${ri(36, 45)} размера, старый, залит водой`, photoText: 'На фото с воздуха: следы на земле, размер не разобрать', vis: .5, air: .1, fromAir: false, cls: 'other' }),
+  () => ({ text: `Свежий след обуви ${ri(36, 45)} размера`, photoText: 'На фото с воздуха: следы на земле, размер не разобрать', vis: .5, air: .1, fromAir: false, cls: 'other' }),
+  () => { const c = pick(CLR); return { text: `Обрывок ткани ${c.g} цвета, выцветший на солнце`, photoText: `На фото с воздуха: лоскут ткани ${c.g} цвета`, vis: .7, air: .5, fromAir: true, cls: 'bright' as ObjClass }; },
+  () => ({ text: 'Ржавая консервная банка', photoText: 'На фото с воздуха: металлический блеск в траве', vis: .8, air: .3, fromAir: true, cls: 'other' }),
+  () => ({ text: 'Старое кострище, углям не меньше месяца', photoText: 'На фото с воздуха: тёмное пятно кострища', vis: .9, air: .6, fromAir: true, cls: 'fire' }),
+  () => ({ text: 'Пластиковая бутылка, помутневшая от времени', photoText: 'На фото с воздуха: пластиковый мусор', vis: .8, air: .4, fromAir: true, cls: 'other' }),
+  () => ({ text: 'Следы крупного животного — лось или кабан', photoText: 'На фото с воздуха: цепочка следов, явно не человеческих', vis: .5, air: .15, fromAir: false, cls: 'other' }),
+  () => ({ text: 'Свежее кострище и банки — похоже, стоянка охотников', photoText: 'На фото с воздуха: свежее кострище', vis: .9, air: .6, fromAir: true, cls: 'fire' }),
+  () => { const c = pick(CLR); return { text: `Вязаная перчатка ${c.g} цвета, отсыревшая`, photoText: `На фото с воздуха: небольшой предмет ${c.g} цвета`, vis: .6, air: .3, fromAir: true, cls: 'bright' as ObjClass }; },
+];
 
 const DOG_NAMES = ['Альма', 'Грей', 'Байкал', 'Веста', 'Тайга', 'Норд', 'Ирма'];
 
@@ -159,8 +153,12 @@ export function addUnit(g: Game, type: UnitType): void {
   g.nameCnt[type]++;
   const n = g.nameCnt[type];
   const name = type === 'foot' ? 'Лиса-' + n
-    : type === 'dog' ? 'Кинолог · ' + DOG_NAMES[(n - 1) % 7]
-      : type === 'atv' ? 'Вездеход-' + n
+    : type === 'dog' ? `Кинолог-${n} · ${DOG_NAMES[(n - 1) % DOG_NAMES.length]}`
+      : type === 'wind' ? 'Ветер-' + n
         : 'Коптер-' + n;
-  g.units.push({ id: g.unitId++, type, gen: TYPES[type].gen, name, level: 1, fatigue: 0, status: 'idle', phaseStart: 0, phaseEnd: 0, mission: null });
+  g.units.push({
+    id: g.unitId++, type, gen: TYPES[type].gen, name, level: 1, fatigue: 0,
+    status: 'idle', phaseStart: 0, phaseEnd: 0, mission: null,
+    away: null, busyUntil: 0, restNeed: 0, passengers: [],
+  });
 }

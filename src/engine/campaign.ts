@@ -1,5 +1,5 @@
-import type { Campaign, Game, KV, UnitType, BuildKey } from './types';
-import { SAVE_KEY, TYPES } from './constants';
+import type { Campaign, CampStats, Game, KV, UnitType, BuildKey } from './types';
+import { SAVE_KEY, TYPES, BUILD, MAXLVL } from './constants';
 import { clamp } from './util';
 
 export function DEFAULT_CAMPAIGN(): Campaign {
@@ -9,20 +9,36 @@ export function DEFAULT_CAMPAIGN(): Campaign {
       { type: 'foot', name: 'Лиса-1', level: 1 },
       { type: 'foot', name: 'Лиса-2', level: 1 },
     ],
-    nameCnt: { foot: 2, dog: 0, atv: 0, drone: 0 },
-    stats: { won: 0, lost: 0 },
+    nameCnt: { foot: 2, dog: 0, wind: 0, drone: 0 },
+    stats: { alive: 0, dead: 0, missing: 0 },
   };
 }
 
+const num = (v: unknown, def = 0): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.floor(n) : def;
+};
+
 export function normalizeCampaign(c: any): Campaign {
   const d = DEFAULT_CAMPAIGN();
+  const buildings = { ...d.buildings };
+  for (const k of Object.keys(buildings) as BuildKey[]) {
+    buildings[k] = clamp(num(c?.buildings?.[k], d.buildings[k]), 0, BUILD[k].max);
+  }
+  const nameCnt = { ...d.nameCnt };
+  for (const k of Object.keys(nameCnt) as UnitType[]) nameCnt[k] = Math.max(0, num(c?.nameCnt?.[k], 0));
+  const stats: CampStats = {
+    alive: Math.max(0, num(c?.stats?.alive)),
+    dead: Math.max(0, num(c?.stats?.dead)),
+    missing: Math.max(0, num(c?.stats?.missing)),
+  };
   return {
-    buildings: Object.assign({}, d.buildings, c?.buildings) as Record<BuildKey, number>,
+    buildings,
     roster: (Array.isArray(c?.roster) ? c.roster : [])
       .filter((r: any) => r && (TYPES as Record<string, unknown>)[r.type])
-      .map((r: any) => ({ type: r.type as UnitType, name: String(r.name || 'Отряд'), level: clamp(Number(r.level) | 0, 1, 3) })),
-    nameCnt: Object.assign({}, d.nameCnt, c?.nameCnt) as Record<UnitType, number>,
-    stats: Object.assign({}, d.stats, c?.stats) as { won: number; lost: number },
+      .map((r: any) => ({ type: r.type as UnitType, name: String(r.name || 'Отряд'), level: clamp(num(r.level, 1), 1, MAXLVL) })),
+    nameCnt,
+    stats,
   };
 }
 
@@ -38,7 +54,7 @@ export function loadCampaign(kv: KV): Campaign {
 }
 
 // Собирает кампанию из текущего состояния g + переданной статистики и пишет в хранилище.
-export function saveCampaign(kv: KV, g: Game, stats: { won: number; lost: number }): Campaign {
+export function saveCampaign(kv: KV, g: Game, stats: CampStats): Campaign {
   const campaign: Campaign = {
     buildings: { ...g.buildings },
     roster: g.units.map(u => ({ type: u.type, name: u.name, level: u.level })),

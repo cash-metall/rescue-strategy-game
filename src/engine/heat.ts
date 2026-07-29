@@ -5,6 +5,8 @@ import { angDiff } from './util';
 
 // Карта вероятности 0..1 по подтверждённым/помеченным настоящими уликам + затухание вокруг ТПК.
 export function heatScores(g: Game): number[][] {
+  // Улики без привязки к карте (gpsDead) учитываются, но без направленной стрелки:
+  // штаб знает о находке, только не знает точного места.
   const hints = g.clues.filter(c => effMark(c) === 'real');
   const sc: number[][] = [];
   let mx = 0;
@@ -15,7 +17,7 @@ export function heatScores(g: Game): number[][] {
       for (const h of hints) {
         const dx = x - h.x, dy = y - h.y;
         const d = Math.hypot(dx, dy);
-        if (h.dirShow != null) {
+        if (h.dirShow != null && !h.noPos) {
           if (d < 0.5) continue;
           const ang = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
           const diff = angDiff(ang, h.dirShow);

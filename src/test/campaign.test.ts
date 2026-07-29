@@ -1,17 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-  newGame, simMinute, actBuild, actHire, actTrain, foundVictim,
-  loadCampaign, saveCampaign, resetCampaign, memoryKV, SAVE_KEY,
-  type Fx, type Game,
+  newGame, simMinute, actBuild, actHire, actTrain, foundVictim, finalizeOver,
+  loadCampaign, saveCampaign, resetCampaign, memoryKV, SAVE_KEY, MAXLVL,
+  type Fx, type Game, type CampStats,
 } from '../engine';
 
 const noop = (_fx: Fx) => {};
+const zero = (): CampStats => ({ alive: 0, dead: 0, missing: 0 });
 
 describe('кампания: перенос штаба между делами', () => {
-  it('постройки/ростер/обучение переносятся, усталость сброшена, локация новая, бюджет свежий', () => {
+  it('постройки/ростер/уровень переносятся, усталость сброшена, локация новая, бюджет свежий', () => {
     const kv = memoryKV();
     let campaign = loadCampaign(kv);          // дефолт
-    let stats = { won: 0, lost: 0 };
+    let stats = zero();
 
     const g: Game = newGame(campaign);
     g.funds = 100000;
@@ -22,19 +23,21 @@ describe('кампания: перенос штаба между делами', 
     actHire(g, 'foot', noop);                 // ростер 3
     const beforeUnits = g.units.length;
 
+    // Обучение теперь мгновенное, но забирает группу из дела до следующего поиска.
     const u = g.units[0];
     actTrain(g, u.id, noop);
-    for (let i = 0; i < 200 && u.status === 'train'; i++) simMinute(g, noop);
+    expect(u.level).toBe(2);
+    expect(u.away).toBe('training');
     const trainedLevel = u.level;
 
     const oldLkp = g.lkp.x + ',' + g.lkp.y;
     const oldVictim = g.victim.x + ',' + g.victim.y;
 
-    // конец дела победой + фиксация кампании (то, что делает стор в onCaseEnd)
-    const idle = g.units.find(x => x.status === 'idle') || g.units[0];
-    foundVictim(g, idle);
-    expect(g.over && g.over.win).toBe(true);
-    stats = { ...stats, won: stats.won + 1 };
+    // конец дела находкой + фиксация кампании (то, что делает стор в onCaseEnd)
+    const free = g.units.find(x => !x.away) || g.units[0];
+    foundVictim(g, free, noop);
+    expect(g.over?.outcome).toBe('alive');
+    stats = { ...stats, alive: stats.alive + 1 };
     campaign = saveCampaign(kv, g, stats);
     const savedRaw = kv.getItem(SAVE_KEY);
 
@@ -47,7 +50,9 @@ describe('кампания: перенос штаба между делами', 
     expect(g2.units.length).toBe(beforeUnits);
     expect(trainedLevel).toBe(2);
     expect(g2.units.some(x => x.level === 2)).toBe(true);
+    // выбывшие возвращаются в строй: away/busyUntil/restNeed живут только внутри дела
     expect(g2.units.every(x => x.fatigue === 0 && x.status === 'idle' && !x.mission)).toBe(true);
+    expect(g2.units.every(x => !x.away && x.busyUntil === 0 && x.restNeed === 0)).toBe(true);
     const newLoc = (g2.lkp.x + ',' + g2.lkp.y) !== oldLkp || (g2.victim.x + ',' + g2.victim.y) !== oldVictim;
     expect(newLoc).toBe(true);
     expect(g2.funds).toBe(250);
@@ -55,10 +60,49 @@ describe('кампания: перенос штаба между делами', 
     expect((savedRaw as string).length).toBeGreaterThan(0);
   });
 
+  it('пешую группу можно докачать до 4 уровня, остальным закрыт 4-й', () => {
+    const kv = memoryKV();
+    const g = newGame(loadCampaign(kv));
+    g.funds = 100000;
+    actBuild(g, 'train', noop); actBuild(g, 'train', noop); actBuild(g, 'train', noop);
+    expect(g.buildings.train).toBe(3);
+    actBuild(g, 'tent', noop);           // tent 2 — открывает «Ветер»
+    actHire(g, 'wind', noop);
+
+    // пешая: 1 → 4 (каждое обучение забирает её из дела, поэтому возвращаем в строй руками)
+    const foot = g.units.find(u => u.type === 'foot')!;
+    for (let lvl = 2; lvl <= MAXLVL; lvl++) {
+      actTrain(g, foot.id, noop);
+      expect(foot.level).toBe(lvl);
+      foot.away = null;
+    }
+    expect(foot.level).toBe(4);
+    actTrain(g, foot.id, noop);
+    expect(foot.level).toBe(4);           // выше 4 некуда
+
+    // «Ветер»: 4-й уровень — резерв, обучение до него закрыто
+    const wind = g.units.find(u => u.type === 'wind')!;
+    for (let i = 0; i < 5; i++) { actTrain(g, wind.id, noop); wind.away = null; }
+    expect(wind.level).toBe(3);
+  });
+
+  it('три категории исходов пишутся раздельно', () => {
+    const kv = memoryKV();
+    const stats = zero();
+    const g = newGame(loadCampaign(kv));
+    finalizeOver(g, 'dead', 'Лиса-1');
+    expect(g.over?.outcome).toBe('dead');
+    stats.dead++;
+    const c = saveCampaign(kv, g, stats);
+    expect(c.stats).toEqual({ alive: 0, dead: 1, missing: 0 });
+    const back = loadCampaign(kv);
+    expect(back.stats.dead).toBe(1);
+  });
+
   it('сброс очищает сохранение и возвращает дефолтный штаб', () => {
     const kv = memoryKV();
     const g = newGame(loadCampaign(kv));
-    saveCampaign(kv, g, { won: 3, lost: 1 });
+    saveCampaign(kv, g, { alive: 3, dead: 1, missing: 2 });
     expect(kv.getItem(SAVE_KEY)).not.toBeNull();
 
     const def = resetCampaign(kv);
@@ -66,6 +110,7 @@ describe('кампания: перенос штаба между делами', 
     expect(def.buildings.radio).toBe(0);
     expect(def.buildings.tent).toBe(1);
     expect(def.roster.length).toBe(2);
+    expect(def.stats).toEqual({ alive: 0, dead: 0, missing: 0 });
   });
 
   it('загрузка битого сохранения даёт дефолт', () => {
@@ -74,5 +119,26 @@ describe('кампания: перенос штаба между делами', 
     const c = loadCampaign(kv);
     expect(c.buildings.tent).toBe(1);
     expect(c.roster.length).toBe(2);
+  });
+
+  it('нормализация чинит мусор в сохранении, а не пропускает его', () => {
+    const kv = memoryKV();
+    kv.setItem(SAVE_KEY, JSON.stringify({
+      buildings: { tent: 99, radio: 'abc', carto: -5, rest: 1, train: 1 },
+      roster: [
+        { type: 'foot', name: 'Лиса-1', level: 77 },
+        { type: 'ufo', name: 'НЛО', level: 1 },
+        { type: 'dog', name: 'Кинолог-1 · Альма', level: 2 },
+      ],
+      nameCnt: { foot: 1, dog: 1, wind: 0, drone: 0 },
+      stats: { alive: 'x', dead: 2, missing: null },
+    }));
+    const c = loadCampaign(kv);
+    expect(c.buildings.tent).toBe(3);        // клампится к BUILD.tent.max
+    expect(c.buildings.radio).toBe(0);       // нечисло → дефолт
+    expect(c.buildings.carto).toBe(0);       // отрицательное → 0
+    expect(c.roster.length).toBe(2);         // неизвестный тип выброшен
+    expect(c.roster[0].level).toBe(MAXLVL);  // уровень клампится
+    expect(c.stats).toEqual({ alive: 0, dead: 2, missing: 0 });
   });
 });

@@ -1,10 +1,17 @@
 <script lang="ts">
   import { game } from '../../state/game.svelte';
-  import { BUILD, TYPES, TENTCAP, type BuildKey, type UnitType } from '../../engine';
+  import { BUILD, TYPES, TENTCAP, awayCount, type BuildKey, type UnitType } from '../../engine';
 
   const g = $derived(game.g);
   const buildKeys = Object.keys(BUILD) as BuildKey[];
   const unitTypes = Object.keys(TYPES) as UnitType[];
+  const gone = $derived(awayCount(g));
+
+  function abandon() {
+    if (confirm('Поиски будут прекращены, пропавший останется ненайденным. Это нельзя отменить.\n\nСвернуть операцию?')) {
+      game.abandon();
+    }
+  }
 </script>
 
 <div class="secH">Развитие лагеря</div>
@@ -24,7 +31,7 @@
   </div>
 {/each}
 
-<div class="secH">Наём отрядов ({g.units.length}/{TENTCAP[g.buildings.tent]})</div>
+<div class="secH">Наём отрядов ({g.units.length}/{TENTCAP[g.buildings.tent]}{#if gone} · {gone} выбыл{gone === 1 ? '' : 'о'}{/if})</div>
 {#each unitTypes as type (type)}
   {@const T = TYPES[type]}
   {@const locked = g.buildings.tent < T.unlock}
@@ -40,3 +47,18 @@
     </div>
   </div>
 {/each}
+
+<div class="secH">Операция</div>
+<div class="card">
+  <p class="stTxt">
+    {#if g.medicsGone}
+      Медики уехали. Поиск можно продолжать сколько угодно — рано или поздно квадраты закончатся и пропавшего найдут. Свернуть операцию стоит только если искать больше некем.
+    {:else}
+      Дело не заканчивается само: ищите столько, сколько нужно. Свернуть операцию — крайняя мера, если все группы выбыли и нанять новые не на что.
+    {/if}
+  </p>
+  <div class="row">
+    <span class="stTxt">Пропавший не будет найден</span>
+    <button class="btn mini danger" onclick={abandon}>✖ Свернуть поиск</button>
+  </div>
+</div>

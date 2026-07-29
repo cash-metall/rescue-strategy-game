@@ -6,6 +6,7 @@
 
   interface Mark {
     hq?: boolean; lkp?: boolean; victim?: boolean; trail?: boolean;
+    sight?: 'human' | 'object';
     arrows: { cls: string; ch: string }[];
   }
 
@@ -19,11 +20,14 @@
   // Путь: M6,12 → 94,12 (вправо) → 94,30 (вниз) → 6,30 (влево) → … → 94,84
   // Длина: 5 × 88 + 4 × 18 = 512 ед.
   const TRACK_LEN = 512;
-  const trackOffset = $derived(TRACK_LEN * (1 - cell.coverage / 100));
+  // Рисуется ОТОБРАЖАЕМОЕ покрытие: при севшем навигаторе трек не появляется,
+  // хотя движок помнит, что квадрат уже обследован (docs/incidents.md, gpsDead).
+  const trackOffset = $derived(TRACK_LEN * (1 - cell.shown / 100));
 
   const title = $derived(
     `Кв. ${coordName(cell.x, cell.y)} · ${TERR[cell.terrain].name}` +
-    (targetable(cell) ? ` · осмотрено ${Math.round(cell.coverage)}%` : '') +
+    (targetable(cell) ? ` · осмотрено ${Math.round(cell.shown)}%` : '') +
+    (mark?.sight ? (mark.sight === 'human' ? ' · возможная цель: человек' : ' · возможная цель на снимке') : '') +
     (far ? ' · вне радиуса связи' : '')
   );
 
@@ -39,7 +43,7 @@
   <span class="ter"></span>
   <div class="heat" style:opacity={heat * 0.5}></div>
 
-  {#if cell.coverage > 0 || isSearching}
+  {#if cell.shown > 0 || isSearching}
     <!-- GPS-трек: рисуется пропорционально coverage, анимируется при активном поиске -->
     <svg class="track" viewBox="0 0 100 100" aria-hidden="true">
       <path
@@ -56,6 +60,7 @@
     {#if mark?.lkp}<img class="pin pulse" src="{IMG}markers/pin.svg" alt="точка последнего контакта" />{/if}
     {#if over && mark?.trail}<img class="trail" src="{IMG}markers/trail.svg" alt="след" />{/if}
     {#if over && mark?.victim}<img src="{IMG}markers/victim.svg" alt="пропавший" />{/if}
+    {#if mark?.sight}<span class="sight" class:hum={mark.sight === 'human'}>{mark.sight === 'human' ? '🚨' : '❓'}</span>{/if}
     {#if mark}{#each mark.arrows as a, i (i)}<span class={a.cls}>{a.ch}</span>{/each}{/if}
   </div>
   <div class="uu">
@@ -65,6 +70,19 @@
 </div>
 
 <style>
+  /* Наводка «возможная цель» — маркер коптера/телефонного звонка, не улика */
+  .sight { font-size: 13px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .55)); }
+  .sight.hum { animation: sight-pulse 1.6s ease-in-out infinite; }
+
+  @keyframes sight-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.22); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sight.hum { animation: none; }
+  }
+
   /* GPS-трек змейкой — абсолютный SVG-слой поверх фона, под маркерами */
   .track {
     position: absolute;

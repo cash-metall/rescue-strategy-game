@@ -11,29 +11,55 @@
   (ключ `rescueHQ.campaign.v1`), в сеть ничего не уходит. Запуск — любой статический сервер.
 - Правки вносим в `src/`. Однофайловая vanilla-версия лежит в `legacy/rescue-hq.html` как референс.
 
+## ⚠ Обратная совместимость НЕ нужна (до релиза)
+
+**Игра ещё не выпущена, игроков нет, беречь чужие сохранения не требуется.** Поэтому:
+
+- **Любые ключи, поля и форматы можно и нужно менять** ради консистентности кода и логики: ключи
+  типов юнитов (`foot`/`dog`/`wind`/`drone`), `BuildKey`, структуру `Campaign`, `SAVE_KEY`, имена
+  полей `Game`/`Unit`/`Cell`/`Clue`.
+- Не надо писать миграции, поддерживать чтение старых сохранений, добавлять «версии формата» и
+  оставлять устаревшие поля-синонимы. Несовместимое сохранение просто игнорируется — `loadCampaign`
+  уже падает в `DEFAULT_CAMPAIGN()` при любом мусоре.
+- Не надо аргументировать решения тем, что «это сломает сохранения игроков» — такого аргумента
+  сейчас не существует. Выбирайте вариант, который чище по логике.
+- Мёртвые поля (`clue.paid`, `TERR[x].emoji`) — удалять, а не хранить «на всякий случай».
+
+**Это правило действует до релиза.** После выпуска оно будет снято, и с того момента формат
+сохранения станет обязательством перед игроками.
+
 ## Команды
 
 ```bash
 npm install
-npm run dev      # dev-сервер с HMR (localhost:5173)
+npm run dev      # dev-сервер с HMR → http://localhost:5173/rescue-strategy-game/
 npm run build    # прод-сборка → dist/
-npm run preview  # показать собранный dist/ (localhost:4173)
+npm run preview  # показать собранный dist/ → http://localhost:4173/rescue-strategy-game/
 npm run check    # svelte-check (типы) — должно быть 0 ошибок
 npm test         # vitest — тесты движка (генерация, авто-игрок/баланс, кампания)
+npm run test:watch  # vitest в watch-режиме
 ```
+
+**Внимание к адресу.** `vite.config.ts` задаёт `base: '/rescue-strategy-game/'` — по корню
+(`localhost:5173/`) приложение не поднимется, и `dist/index.html` нельзя открыть по `file://`.
+Конфиг vitest живёт внутри `vite.config.ts`, отдельного `vitest.config.*` нет; тест вне `src/test/`
+или без суффикса `.test.ts` молча не запустится, а `npm test` идёт с `--passWithNoTests`.
 
 ## Структура
 
 ```
 src/
   engine/     ЧИСТАЯ логика (TS, без DOM/Svelte) — движок. Тестируется в node.
-    types constants rng util generate access sim actions heat campaign
+    types constants rng util path access events generate sim actions heat campaign
+    + index.ts (барель)
   state/      game.svelte.ts (стор с рунами: g=$state, tick, действия, модалки, sheet), fx.svelte.ts (тосты)
-  components/ Header, MapGrid/MapCell, CellSheet, TabBar/TabPanel, tabs/*, Modal + Intro/Settings/Results, Toasts, ResultsFab
+  components/ MapHUD (шапка карты), MapGrid/MapCell, CellSheet, TabBar/TabPanel, tabs/*,
+              Modal + Intro/Settings/Results/Quest, Toasts, ResultsFab
   styles/     tokens.css (переменные), global.css (reset + язык карты/панелей/модалок, unscoped)
-  test/       generation / autoplayer / campaign — vitest
+  test/       generation / autoplayer / campaign / mechanics — vitest (33 теста)
 public/images/  SVG-ассеты (топознаки местности, юниты, штаб, маркеры)
-dist/           собранная игра (под контролем версий — деплой = отдать эту папку)
+dist/           собранная игра, закоммичена — для ручной передачи. GitHub Pages при этом раздаёт
+                НЕ её: .github/workflows/deploy.yml пересобирает проект на каждый push в main
 docs/           подробная документация по системам (см. docs/README.md)
 legacy/         оригинальная однофайловая версия rescue-hq.html + её images/ и node-харнесс
 ```
@@ -46,10 +72,15 @@ legacy/         оригинальная однофайловая версия r
   его, обновляются только читающие компоненты. Никаких `dirty`/`innerHTML`-перерисовок.
 - **Тик-луп** — в `App.onMount` (`setInterval(tick,250)` + `clearInterval`). Не класть в `$effect`.
 - **Русский язык в UI: следить за родом.** У юнитов и профилей есть поле `gen` (`'f'`/`'m'`), для
-  глаголов — хелпер `gv(u,'вернулась','вернулся')`.
+  глаголов — хелпер `gv(u,'вернулась','вернулся')`. Имена отрядов **не склоняем** — фразу строим так,
+  чтобы имя стояло в именительном («выехал за группой в кв. D8 (Лиса-2)», а не «забрать Лису-2»).
+- **Качество и темп поиска — разные вещи.** `detectEff` зависит только от типа и уровня отряда;
+  местность, погода, ночь и усталость влияют на `coverRate`, то есть на время. Не смешивать обратно.
 - **Mobile-first:** базовые стили — под телефон; десктопная 2-колоночная раскладка — `@media (min-width:900px)`.
-- Любое изменение логики проверять `npm test` — там ловятся исключения и регресс баланса.
+- Любое изменение логики или **чисел** проверять `npm test`: балансный прогон сидирован, поэтому ловит
+  именно вашу правку. Три бага прошли типы и упали только на сорока прогонах — см. `docs/devlog.md`.
 
 ## Куда смотреть дальше
 
 Полное описание систем, чисел и связей — в **`docs/`** (начать с `docs/README.md`).
+Почему механики устроены именно так и что уже пробовали — в **`docs/devlog.md`**.

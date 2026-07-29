@@ -24,14 +24,22 @@
     return s;
   });
 
-  interface Mark { hq?: boolean; lkp?: boolean; victim?: boolean; trail?: boolean; arrows: { cls: string; ch: string }[]; }
+  interface Mark { hq?: boolean; lkp?: boolean; victim?: boolean; trail?: boolean; sight?: 'human' | 'object'; arrows: { cls: string; ch: string }[]; }
 
   const marks = $derived.by(() => {
     const m = new Map<string, Mark>();
     const get = (k: string): Mark => { let v = m.get(k); if (!v) { v = { arrows: [] }; m.set(k, v); } return v; };
     get(`${g.hq.x},${g.hq.y}`).hq = true;
     get(`${g.lkp.x},${g.lkp.y}`).lkp = true;
+    // Наводки «возможная цель»: коптер и телефонные звонки. Гаснут после проверки квадрата.
+    for (const s of g.sightings) {
+      if (s.checked) continue;
+      const mk = get(`${s.x},${s.y}`);
+      if (mk.sight !== 'human') mk.sight = s.kind;
+    }
     for (const c of g.clues) {
+      // улика без привязки к карте (сел навигатор) на карте не рисуется
+      if (c.noPos) continue;
       const mk = effMark(c);
       const k = `${c.x},${c.y}`;
       if (mk === 'real' && c.dirShow != null) get(k).arrows.push({ cls: 'ar', ch: dirArrow(c.dirShow) });

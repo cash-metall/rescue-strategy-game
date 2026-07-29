@@ -41,17 +41,36 @@ describe('генерация карты/дела', () => {
     expect(avg).toBeLessThan(3600);
   });
 
-  it('лагерь: 1–3 клетки от ТПК, на пустой клетке (не маршрут, без объектов, не жертва)', () => {
+  it('лагерь: 1–3 клетки от ТПК, не на маршруте, без артефактов, не на жертве', () => {
     let bad = 0;
     for (const g of games) {
       const hq = g.hq;
       const cell = g.map[hq.y][hq.x];
       const d = cheb(hq, g.lkp);
       const onTrail = g.trailSet.has(hq.x + ',' + hq.y);
-      const hasObj = cell.objects.length > 0;
+      // проверяем именно артефакты: мусора на карте больше нет вообще, так что
+      // objects.length === 0 стало бы тривиально верным для любой клетки
+      const hasArt = cell.objects.some(o => o.kind === 'art');
       const isVictim = hq.x === g.victim.x && hq.y === g.victim.y;
-      if (d < 1 || d > 3 || onTrail || hasObj || isVictim || cell.terrain !== 'base') bad++;
+      if (d < 1 || d > 3 || onTrail || hasArt || isVictim || cell.terrain !== 'base') bad++;
     }
     expect(bad).toBe(0);
+  });
+
+  it('мусор физически не раскладывается — на карте только артефакты', () => {
+    for (const g of games) {
+      const junk = g.map.flat().flatMap(c => c.objects).filter(o => o.kind === 'junk');
+      expect(junk.length).toBe(0);
+    }
+  });
+
+  it('стартовая улика есть, но в зачёт подтверждённых не идёт', () => {
+    for (const g of games) {
+      expect(g.clues.length).toBe(1);
+      expect(g.clues[0].verdict).toBe('real');
+      expect(g.stats.cluesTotal).toBe(1);
+      // иначе штабные события с первой минуты считали бы дело успешным
+      expect(g.stats.cluesReal).toBe(0);
+    }
   });
 });

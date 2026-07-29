@@ -11,6 +11,7 @@
   import IntroModal from './components/IntroModal.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
   import ResultsModal from './components/ResultsModal.svelte';
+  import QuestModal from './components/QuestModal.svelte';
 
   onMount(() => {
     const id = setInterval(() => game.tick(), 250);
@@ -110,7 +111,7 @@
 
 <Toasts />
 <ResultsFab />
-{#if modal === 'intro'}<IntroModal />{:else if modal === 'settings'}<SettingsModal />{:else if modal === 'results'}<ResultsModal />{/if}
+{#if modal === 'intro'}<IntroModal />{:else if modal === 'settings'}<SettingsModal />{:else if modal === 'results'}<ResultsModal />{:else if modal === 'quest'}<QuestModal />{/if}
 
 <style>
   /* ===== Мобайл (по умолчанию) ===== */

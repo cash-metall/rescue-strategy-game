@@ -1,66 +1,131 @@
-import type { UnitType, Terrain, WeatherKey, BuildKey, Color, ProfileBase } from './types';
+import type { UnitType, Terrain, WeatherKey, BuildKey, Color, ProfileBase, IncidentKey } from './types';
 
 export const W = 12, H = 12;
 
-export const TERR: Record<Terrain, { name: string; emoji: string }> = {
-  forest: { name: 'Лес', emoji: '' },
-  dense: { name: 'Чаща', emoji: '🌲' },
-  meadow: { name: 'Поляна', emoji: '🌼' },
-  marsh: { name: 'Болото', emoji: '🌾' },
-  hills: { name: 'Холмы', emoji: '⛰' },
-  lake: { name: 'Озеро', emoji: '💧' },
-  base: { name: 'Лагерь', emoji: '' },
+export const TERR: Record<Terrain, { name: string }> = {
+  forest: { name: 'Лес' },
+  dense: { name: 'Чаща' },
+  meadow: { name: 'Поляна' },
+  marsh: { name: 'Болото' },
+  hills: { name: 'Холмы' },
+  lake: { name: 'Озеро' },
+  base: { name: 'Лагерь' },
 };
 
-// Модификатор эффективности поиска: местность × тип юнита (нет lake/base — доступ guard-ится).
-export const SMOD: Record<string, Record<UnitType, number>> = {
-  forest: { foot: 1.0, dog: 1.1, atv: 0.8, drone: 0.6 },
-  dense: { foot: 0.8, dog: 1.0, atv: 0.4, drone: 0.25 },
-  meadow: { foot: 1.1, dog: 1.0, atv: 1.3, drone: 1.5 },
-  marsh: { foot: 0.7, dog: 0.8, atv: 0.45, drone: 1.3 },
-  hills: { foot: 0.9, dog: 0.9, atv: 1.15, drone: 1.2 },
+// Модификатор КАЧЕСТВА осмотра: местность × тип юнита (нет lake/base — доступ guard-ится).
+// «Ветер» не обследует квадраты вовсе, коптер не растит покрытие — их колонок здесь нет.
+export const SMOD: Record<string, Record<'foot' | 'dog', number>> = {
+  forest: { foot: 1.0, dog: 1.1 },
+  dense: { foot: 0.8, dog: 1.0 },
+  meadow: { foot: 1.1, dog: 1.0 },
+  marsh: { foot: 0.7, dog: 0.8 },
+  hills: { foot: 0.9, dog: 0.9 },
 };
 
-// Модификатор времени в пути.
-export const TMOD: Record<string, Record<UnitType, number>> = {
-  forest: { foot: 1.0, dog: 1.0, atv: 1.2, drone: 1.0 },
-  dense: { foot: 1.4, dog: 1.3, atv: 2.0, drone: 1.0 },
-  meadow: { foot: 0.9, dog: 0.9, atv: 0.6, drone: 1.0 },
-  marsh: { foot: 1.8, dog: 1.6, atv: 2.5, drone: 1.0 },
-  hills: { foot: 1.3, dog: 1.2, atv: 1.5, drone: 1.0 },
+// Цена клетки при поиске пути. Отдельно для пешего и для машины — у них разная логика объезда.
+// Пеший разброс узкий: болото (1.7) дешевле обхода двумя клетками леса (2.0).
+// Машинный широкий: «Ветру» выгоден крюк по открытому.
+export const PATHCOST: Record<'foot' | 'wind', Partial<Record<Terrain, number>>> = {
+  foot: { meadow: 0.9, forest: 1.0, base: 1.0, hills: 1.25, dense: 1.4, marsh: 1.7 },
+  wind: { meadow: 0.5, forest: 1.0, base: 1.0, hills: 1.3, dense: 2.6, marsh: 3.2 },
 };
 
-export const NIGHT: Record<UnitType, number> = { foot: 0.6, dog: 0.85, atv: 0.7, drone: 0.5 };
+// Проходимость для «Ветра» по уровням. Озеро непроходимо для всех и всегда.
+export const WIND_PASS: Record<number, Terrain[]> = {
+  1: ['forest', 'meadow', 'hills', 'base'],
+  2: ['forest', 'meadow', 'hills', 'base'],
+  3: ['forest', 'meadow', 'hills', 'base', 'marsh', 'dense'],
+  4: ['forest', 'meadow', 'hills', 'base', 'marsh', 'dense'],
+};
+
+export const NIGHT: Record<UnitType, number> = { foot: 0.6, dog: 0.85, wind: 0.7, drone: 0.5 };
 
 export const WEATHER: Record<WeatherKey, { name: string; icon: string; mod: Record<UnitType, number>; drain: number }> = {
-  clear: { name: 'Ясно', icon: '☀️', mod: { foot: 1, dog: 1, atv: 1, drone: 1 }, drain: 0 },
-  cloudy: { name: 'Облачно', icon: '☁️', mod: { foot: 1, dog: 1, atv: 1, drone: 1 }, drain: 0 },
-  rain: { name: 'Дождь', icon: '🌧️', mod: { foot: .85, dog: .6, atv: .8, drone: .7 }, drain: .015 },
-  fog: { name: 'Туман', icon: '🌫️', mod: { foot: .8, dog: 1, atv: .8, drone: .3 }, drain: .006 },
+  clear: { name: 'Ясно', icon: '☀️', mod: { foot: 1, dog: 1, wind: 1, drone: 1 }, drain: 0 },
+  cloudy: { name: 'Облачно', icon: '☁️', mod: { foot: 1, dog: 1, wind: 1, drone: 1 }, drain: 0 },
+  rain: { name: 'Дождь', icon: '🌧️', mod: { foot: .85, dog: .6, wind: .8, drone: .7 }, drain: .015 },
+  fog: { name: 'Туман', icon: '🌫️', mod: { foot: .8, dog: 1, wind: .8, drone: .3 }, drain: .006 },
 };
 
 export interface UnitTypeDef {
   gen: 'f' | 'm'; name: string; icon: string; svg: string;
-  cost: number; power: number; cellMin: number; fatS: number; fatT: number; unlock: number; desc: string;
+  cost: number; cellMin: number; fatS: number; fatT: number; unlock: number; desc: string;
 }
 export const TYPES: Record<UnitType, UnitTypeDef> = {
   foot: {
-    gen: 'f', name: 'Пешая группа', icon: '🥾', svg: 'units/foot.svg', cost: 100, power: 1.0, cellMin: 12, fatS: .4, fatT: .18, unlock: 1,
-    desc: 'Универсальные поисковики. Надёжны в любом лесу, но не быстры.',
+    gen: 'f', name: 'Пешая поисковая группа', icon: '🥾', svg: 'units/foot.svg', cost: 100, cellMin: 12, fatS: .22, fatT: .18, unlock: 1,
+    desc: 'Основная рабочая сила: ищет в любой доступной местности и только она может забрать пострадавшего. Новички приносят много мусора и не читают направление — это лечится обучением.',
   },
   dog: {
-    gen: 'm', name: 'Кинолог с собакой', icon: '🐕', svg: 'units/dog.svg', cost: 180, power: 1.3, cellMin: 13, fatS: .45, fatT: .2, unlock: 1,
-    desc: 'Лучше всех берёт след: на маршруте пропавшего ищет заметно эффективнее и точно определяет направление. Дождь смывает запахи.',
+    gen: 'm', name: 'Кинолог с собакой', icon: '🐕', svg: 'units/dog.svg', cost: 320, cellMin: 13, fatS: .55, fatT: .2, unlock: 1,
+    desc: 'Закрывает квадрат втрое быстрее пешей группы, с опытом читает направление, а следовая собака сама уходит по следу. Дорог, быстро выматывается пешком и требует долгого отдыха. Дождь смывает запахи.',
   },
-  atv: {
-    gen: 'm', name: 'Квадроцикл', icon: '🚙', svg: 'units/atv.svg', cost: 150, power: 0.85, cellMin: 5, fatS: .3, fatT: .08, unlock: 2,
-    desc: 'Быстро добирается куда угодно и почти не устаёт в дороге — незаменим для дальних открытых квадратов. Но с седла в чаще и болоте много не разглядишь.',
+  wind: {
+    gen: 'm', name: 'Ветер (внедорожник)', icon: '🚙', svg: 'units/wind.svg', cost: 150, cellMin: 12, fatS: 0, fatT: .08, unlock: 2,
+    desc: 'Не ищет сам — возит группы от штаба до квадрата и обратно. Пассажиры не устают в дороге и выходят на осмотр свежими. Не всюду проедет: болото и чащу берёт только экипаж со штурманом.',
   },
   drone: {
-    gen: 'm', name: 'Дрон', icon: '🛸', svg: 'units/drone.svg', cost: 260, power: 2.2, cellMin: 3, fatS: .8, fatT: .5, unlock: 3,
-    desc: 'Мгновенно на месте, отлично осматривает открытую местность, фото находок уходят в штаб сразу. Под кронами леса почти слеп; направление по аэрофото — лишь приблизительное. Расходует заряд.',
+    gen: 'm', name: 'Коптер (БПЛА)', icon: '🛸', svg: 'units/drone.svg', cost: 260, cellMin: 3, fatS: .5, fatT: .5, unlock: 3,
+    desc: 'Разведка и только: квадрат не обследует и улик не приносит, зато ставит на карту «возможные цели» — проверять их пойдёт наземная группа. Лучше всего видит костры и яркую одежду. Чащу не берёт. Дорогая игрушка: иногда вылет решает дело, иногда пустой снимок.',
   },
 };
+
+// --- Уровни отрядов ---
+export const MAXLVL = 4;
+// До какого уровня реально можно обучить (у dog/wind/drone 4-й — резерв-заглушка).
+export const TRAINABLE: Record<UnitType, number> = { foot: 4, dog: 3, wind: 3, drone: 3 };
+
+export interface LvlDef {
+  name: string;
+  detect: number;        // качество осмотра, 1.0 = опытная пешая группа
+  cover: number;         // темп закрытия квадрата, ×1 = ~100 минут на квадрат
+  speed: number;         // множитель скорости хода
+  fat: number;           // множитель прироста усталости
+  incident: number;      // вероятность инцидента за задачу
+  junk: [number, number];// сколько посторонних находок принесёт
+  dir: boolean;          // определяет направление
+  note: string;
+}
+
+export const LVL: Record<UnitType, LvlDef[]> = {
+  foot: [
+    { name: 'Новички', detect: 0.80, cover: 1, speed: 1, fat: 1.00, incident: 0.20, junk: [3, 4], dir: false, note: 'Много мусора, направление не читают.' },
+    { name: 'Опытные', detect: 1.00, cover: 1, speed: 1, fat: 0.90, incident: 0.10, junk: [1, 3], dir: false, note: 'Мусора меньше, направление всё ещё не читают.' },
+    { name: 'Старший поисковой группы', detect: 1.20, cover: 1, speed: 1, fat: 0.80, incident: 0.05, junk: [0, 1], dir: true, note: 'Определяет направление, мусор почти не носит.' },
+    { name: 'Группа специального назначения', detect: 1.50, cover: 1, speed: 1, fat: 0.70, incident: 0.07, junk: [0, 0], dir: true, note: 'Направление, скорость и давность следа. Мусор не приносит. Рискует больше.' },
+  ],
+  dog: [
+    { name: 'Собака-стажёр', detect: 0.90, cover: 3, speed: 1, fat: 1.00, incident: 0.02, junk: [0, 1], dir: false, note: 'Быстро обследует квадрат, направление не определяет.' },
+    { name: 'Поисковая собака', detect: 1.00, cover: 3, speed: 1, fat: 0.92, incident: 0.02, junk: [0, 1], dir: true, note: 'При находке определяет направление.' },
+    { name: 'Следовая собака', detect: 1.00, cover: 3, speed: 1, fat: 0.85, incident: 0.02, junk: [0, 1], dir: true, note: 'При находке сама уходит в следующий квадрат — один раз за задачу.' },
+    { name: 'Резерв', detect: 1.00, cover: 3, speed: 1, fat: 0.85, incident: 0.02, junk: [0, 1], dir: true, note: 'В разработке.' },
+  ],
+  wind: [
+    { name: 'Местный на уазике', detect: 0, cover: 0, speed: 2, fat: 1.00, incident: 0.15, junk: [0, 0], dir: false, note: 'Одна группа за раз. Не едет в болото и чащу.' },
+    { name: 'Опытный водитель-поисковик', detect: 0, cover: 0, speed: 3, fat: 0.90, incident: 0.10, junk: [0, 0], dir: false, note: 'Две группы, подбирает по пути. Не едет в болото и чащу.' },
+    { name: 'Экипаж со штурманом', detect: 0, cover: 0, speed: 3, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'Проходит болото и чащу, по дороге может подобрать улику. Рискует людьми и техникой.' },
+    { name: 'Резерв', detect: 0, cover: 0, speed: 3, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'В разработке.' },
+  ],
+  drone: [
+    { name: 'БПЛА с камерой', detect: 0.20, cover: 0, speed: 1, fat: 1.00, incident: 0.05, junk: [0, 0], dir: false, note: 'Только днём. Один квадрат за вылет.' },
+    { name: 'БПЛА с тепловизором', detect: 0.20, cover: 0, speed: 1, fat: 0.92, incident: 0.05, junk: [0, 0], dir: false, note: 'Летает и ночью, но в темноте видит только людей и костры.' },
+    { name: 'Вертолёт', detect: 0.20, cover: 0, speed: 1, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'Только днём, зато осматривает сразу 9 квадратов.' },
+    { name: 'Резерв', detect: 0.20, cover: 0, speed: 1, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'В разработке.' },
+  ],
+};
+
+export const lvl = (type: UnitType, level: number): LvlDef => LVL[type][Math.min(MAXLVL, Math.max(1, level)) - 1];
+
+// Вероятность находки за прирост покрытия: 1 − exp(−detect · vis · FIND_K · Δc/100).
+// FIND_K = 3.0 — это прежние «0.03 за минуту × 100 минут на квадрат»: баланс эталонной группы не меняется.
+export const FIND_K = 3.0;
+// Базовый темп: сколько процентов покрытия в минуту даёт cover = 1 при идеальных условиях.
+export const COVER_BASE = 1.0;
+
+// Персональный множитель отдыха: кинологу нужен более долгий отдых.
+export const REST_MULT: Record<UnitType, number> = { foot: 1, dog: 0.6, wind: 1, drone: 1 };
+// Штраф усталости кинологу за пеший переход.
+export const DOG_FOOT_FAT = 1.6;
 
 export const TENTCAP = [0, 3, 5, 7];
 export const MISSCAP = [2, 3, 4, 6];
@@ -70,33 +135,98 @@ export const EXPS = [0, 1, 2, 3];
 export const EXPCOST = 35;
 export const EXPREWARD = 40;
 export const RESTM = [1, 1.7, 2.4, 3.2];
+// С какого уровня радиостанции группы передают описание находки сразу, не дожидаясь возвращения.
+export const RADIO_LIVE_LVL = 2;
 
-export interface BuildDef { name: string; icon: string; svg: string; max: number; costs: number[]; lvls: string[]; }
+// --- «Ветер» ---
+export const WIND_PASSENGERS = [0, 1, 2, 2, 2];   // по уровню
+export const WIND_PICKUP_CLUE = 0.10;             // ур. 3: шанс подобрать улику в необследованном квадрате пути
+
+// --- Коптер ---
+export const RECON_MIN = 12;          // минут на разведку квадрата
+export const HELI_OUTER = 0.6;        // множитель шанса на 8 внешних клетках вертолёта
+export const FALSE_SIGHT = 0.15;      // шанс ложной наводки на разведанный квадрат
+export const CLASS_BONUS: Record<string, number> = { fire: 2, bright: 2, other: 1 };
+export const VICTIM_AIR_VIS = 0.8;
+
+// --- События и инциденты ---
+export const EVENT_CHANCE = 0.30;
+export const FLAT_TIRE_STOP: [number, number] = [30, 60];
+export const REPAIR_FINE: Record<string, [number, number]> = { wind: [60, 140], drone: [80, 180] };
+export const LAMP_NIGHT_SPEED = 0.6;
+export const LAMP_INJURY = 0.25;      // доп. проверка на травму при севшем фонаре ночью
+export const PANIC_REST = 15;         // после паники нельзя отправлять, пока усталость выше
+export const BUSY_CHANCE = 0.10;
+export const BUSY_HOURS = 12;         // недоступна с 06:00 до 18:00
+
+/**
+ * Веса инцидентов внутри пула. Травма уносит группу до конца дела, поэтому она
+ * должна быть РЕДКОЙ среди инцидентов, а не равновероятной с севшим фонарём:
+ * при равных весах отряды выбывают почти в каждом деле, и поиск встаёт.
+ * Ориентир: не больше одной травмы за дело.
+ */
+export const INCIDENTS: Record<UnitType, Partial<Record<IncidentKey, number>>> = {
+  foot: { gpsDead: 30, lampDead: 25, radioDead: 20, panic: 17, injury: 8 },
+  dog: { gpsDead: 30, lampDead: 25, radioDead: 20, panic: 17, injury: 8 },
+  wind: { flatTire: 62, vehicleDamage: 38 },
+  drone: { gpsDead: 40, vehicleDamage: 60 },
+};
+// Экипаж со штурманом рискует людьми: у ур. 3 добавляется травма.
+export const WIND_L3_EXTRA: Partial<Record<IncidentKey, number>> = { injury: 10 };
+
+export const INCIDENT_NAME: Record<IncidentKey, string> = {
+  injury: 'травма',
+  panic: 'встреча с животным',
+  gpsDead: 'сели батарейки в навигаторе',
+  radioDead: 'отказала рация',
+  lampDead: 'сел фонарь',
+  flatTire: 'пробито колесо',
+  vehicleDamage: 'повреждение техники',
+};
+
+export const STORIES: { text: string; only?: UnitType }[] = [
+  { text: 'вышли на старую вырубку, чуть не потеряли друг друга — собрались, идут дальше' },
+  { text: 'встретили грибников: пропавшего не видели, но обещали посмотреть по своим местам' },
+  { text: 'нашли шалаш охотников — пусто, свежих следов нет' },
+  { text: 'провалились в старую канаву, вымокли по колено, продолжают' },
+  { text: 'наткнулись на брошенную стоянку подростков: мусор свежий, но не наш случай' },
+  { text: 'связь пропадала минут двадцать — рельеф, восстановили' },
+  { text: 'местный лесник показал тропу, которой нет на карте' },
+  { text: 'собака подняла кабана, минут десять успокаивали — обошлось', only: 'dog' },
+  { text: 'дорогу перегородило упавшее дерево, объехали по краю поля', only: 'wind' },
+  { text: 'порыв ветра снёс с курса, пришлось поднять выше и снимать с большей высоты', only: 'drone' },
+];
+
+export interface BuildDef { name: string; icon: string; max: number; costs: number[]; lvls: string[]; }
 export const BUILD: Record<BuildKey, BuildDef> = {
   tent: {
-    name: 'Штабной шатёр', icon: '⛺', svg: 'hq/tent.svg', max: 3, costs: [0, 0, 150, 300],
-    lvls: ['', 'До 3 отрядов. Наём: пешие группы, кинологи.', 'До 5 отрядов. Открывает наём квадроциклов.', 'До 7 отрядов. Открывает наём дронов.'],
+    name: 'Штабной шатёр', icon: '⛺', max: 3, costs: [0, 0, 150, 300],
+    lvls: ['', 'До 3 отрядов. Наём: пешие группы, кинологи.', 'До 5 отрядов. Открывает наём «Ветров».', 'До 7 отрядов. Открывает наём коптеров.'],
   },
   radio: {
-    name: 'Радиостанция', icon: '📻', svg: 'hq/radio.svg', max: 3, costs: [0, 120, 240, 400],
-    lvls: ['2 группы в поле, радиус связи 5 кв.', '3 группы в поле, радиус 7 кв.', '4 группы в поле, радиус 10 кв.', '6 групп в поле, связь по всей карте и отзыв группы с маршрута.'],
+    name: 'Радиостанция', icon: '📻', max: 3, costs: [0, 120, 240, 400],
+    lvls: [
+      '2 группы в поле, радиус связи 5 кв. В поле слышно только «нашли предмет» — что именно, узнаете по возвращении.',
+      '3 группы в поле, радиус 7 кв.',
+      '4 группы в поле, радиус 10 кв. Группы передают описание находок сразу по рации.',
+      '6 групп в поле, связь по всей карте, отзыв группы с маршрута.',
+    ],
   },
   carto: {
-    name: 'Картограф', icon: '🗺️', svg: 'hq/carto.svg', max: 3, costs: [0, 100, 220, 380],
+    name: 'Картограф', icon: '🗺️', max: 3, costs: [0, 100, 220, 380],
     lvls: ['Нет анализа улик.', 'Экспертиза улик (20 мин) и карта вероятности 🔥.', '2 эксперта, экспертиза 12 мин.', '3 эксперта, экспертиза 6 мин.'],
   },
   rest: {
-    name: 'Место отдыха и питания', icon: '🍲', svg: 'hq/rest.svg', max: 3, costs: [0, 80, 180, 320],
+    name: 'Место отдыха и питания', icon: '🍲', max: 3, costs: [0, 80, 180, 320],
     lvls: ['Отдых в лагере: базовый темп.', 'Полевая кухня: отдых ×1,7.', 'Тёплая палатка: отдых ×2,4.', 'Горячее питание круглосуточно: отдых ×3,2.'],
   },
   train: {
-    name: 'Учебный центр', icon: '🎓', svg: 'hq/train.svg', max: 2, costs: [0, 150, 300],
-    lvls: ['Нет обучения.', 'Обучение отрядов до уровня 2.', 'Обучение отрядов до уровня 3.'],
+    name: 'Учебный центр', icon: '🎓', max: 3, costs: [0, 150, 300, 480],
+    lvls: ['Нет обучения.', 'Обучение отрядов до уровня 2.', 'Обучение отрядов до уровня 3.', 'Обучение пеших групп до уровня 4 (ГСН).'],
   },
 };
 
-export const TRAINCOST = [0, 0, 120, 200]; // стоимость обучения ДО уровня n
-export const TRAINTIME = 90;
+export const TRAINCOST = [0, 0, 120, 200, 320]; // стоимость обучения ДО уровня n
 
 export const CLR: Color[] = [
   { n: 'синий', f: 'синяя', g: 'синего' },

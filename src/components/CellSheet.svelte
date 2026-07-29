@@ -1,21 +1,19 @@
 <script lang="ts">
   import { game } from '../state/game.svelte';
   import {
-    TERR, TYPES, MISSCAP, coordName, fmtDur,
-    cellAt, inRange, searchEff, travelTime, activeMissions, lvlFat,
+    TERR, TYPES, coordName, fmtDur, RECON_MIN,
+    cellAt, inRange, detectEff, searchEst, planTrip, missionSlots, sendBlock,
+    available, freeWinds, lvl,
   } from '../engine';
 
   const g = $derived(game.g);
   const sel = $derived(g.ui.sel);
   const cell = $derived(sel ? cellAt(g, sel.x, sel.y) : null);
-  const idle = $derived(g.units.filter(u => u.status === 'idle'));
-  const cluesHere = $derived(sel ? g.clues.filter(c => c.x === sel.x && c.y === sel.y) : []);
-  const slots = $derived(MISSCAP[g.buildings.radio] - activeMissions(g));
-  const durs = [
-    { v: 40, label: 'Быстрый осмотр (40 мин)' },
-    { v: 80, label: 'Стандартный (1 ч 20 мин)' },
-    { v: 140, label: 'Тщательный (2 ч 20 мин)' },
-  ];
+  const ready = $derived(g.units.filter(u => available(g, u) && u.type !== 'wind'));
+  const cluesHere = $derived(sel ? g.clues.filter(c => c.x === sel.x && c.y === sel.y && !c.noPos) : []);
+  const sightHere = $derived(sel ? g.sightings.filter(s => s.x === sel.x && s.y === sel.y && !s.checked) : []);
+  const slots = $derived(missionSlots(g));
+  const winds = $derived(freeWinds(g).length);
 </script>
 
 <div class="cellpanel">
@@ -31,39 +29,51 @@
     {:else if !inRange(g, cell)}
       <p class="stTxt">⚠️ Вне радиуса связи. Улучшите радиостанцию, чтобы координировать поиск в этом квадрате.</p>
     {:else}
-      <p class="stTxt">Осмотрено: <b>{Math.round(cell.coverage)}%</b>{#if sel.x === g.lkp.x && sel.y === g.lkp.y} · <span class="hl">📍 точка последнего контакта</span>{/if}{#if cluesHere.length} · находок здесь: <b>{cluesHere.length}</b>{/if}</p>
+      <p class="stTxt">Осмотрено: <b>{Math.round(cell.shown)}%</b>{#if sel.x === g.lkp.x && sel.y === g.lkp.y} · <span class="hl">📍 точка последнего контакта</span>{/if}{#if cluesHere.length} · находок здесь: <b>{cluesHere.length}</b>{/if}</p>
 
-      {#if !idle.length}
-        <p class="stTxt" style="margin-top:8px">Свободных отрядов нет — все в поле, на отдыхе они появятся здесь.</p>
+      {#if sightHere.length}
+        <div class="secH">Наводки</div>
+        {#each sightHere.slice(0, 3) as s (s.id)}
+          <p class="stTxt">{s.kind === 'human' ? '🚨' : '❓'} {s.text} — <span class="hl">нужна наземная группа</span></p>
+        {/each}
+      {/if}
+
+      {#if !ready.length}
+        <p class="stTxt" style="margin-top:8px">Свободных отрядов нет — кто в поле, кто отдыхает, кто занят по работе.</p>
       {:else}
         <div class="secH">Кого отправить</div>
-        {#each idle as u (u.id)}
+        {#each ready as u (u.id)}
           {@const T = TYPES[u.type]}
-          {@const eff = Math.round(searchEff(g, u, cell) * 100)}
-          {@const tt = travelTime(g, u, cell)}
+          {@const L = lvl(u.type, u.level)}
+          {@const block = sendBlock(g, u, cell)}
+          {@const trip = planTrip(g, u, cell, null)}
+          {@const est = u.type === 'drone' ? RECON_MIN : searchEst(g, u, cell)}
           {@const tired = u.type === 'drone' ? u.fatigue > 75 : u.fatigue >= 90}
-          {@const est = u.type === 'drone' ? Math.round((tt + 0.6 * tt) * T.fatT * lvlFat(u) + g.ui.dur * T.fatS * lvlFat(u)) : 0}
-          {@const low = u.type === 'drone' && (100 - u.fatigue) < est + 5}
-          <div class="urow" class:dis={tired}>
+          {@const off = tired || !!block}
+          <div class="urow" class:dis={off}>
             <label>
-              <input type="checkbox" checked={g.ui.selUnits.has(u.id) && !tired} disabled={tired}
+              <input type="checkbox" checked={g.ui.selUnits.has(u.id) && !off} disabled={off}
                      onchange={(e) => game.toggleUnit(u.id, (e.currentTarget as HTMLInputElement).checked)} />
-              <span class="nm">{T.icon} {u.name}{#if u.level > 1} <span class="lvl">ур.{u.level}</span>{/if}</span>
-              <span class="inf">эфф. {eff}% · путь ~{fmtDur(tt)}{tired ? ' · нужен отдых' : low ? ' · ⚠️ может не хватить заряда' : ''}</span>
+              <span class="nm">{T.icon} {u.name} <span class="lvl">{L.name}</span></span>
+              <span class="inf">
+                {#if block}⛔ {block}
+                {:else if tired}нужен отдых
+                {:else}
+                  качество {Math.round(detectEff(u) * 100)}% · путь ~{fmtDur(trip.travel)}
+                  {#if u.type === 'drone'}· съёмка {RECON_MIN} мин{:else}· осмотр ~{est === Infinity ? '—' : fmtDur(est)}{/if}
+                {/if}
+              </span>
             </label>
           </div>
         {/each}
 
-        <div class="durrow">
-          {#each durs as d (d.v)}
-            <label><input type="radio" name="dur" checked={g.ui.dur === d.v} onchange={() => game.setDur(d.v)} />{d.label}</label>
-          {/each}
-        </div>
-
         <div class="row">
-          <span class="stTxt">Свободных «слотов» рации: <b>{slots}</b></span>
+          <span class="stTxt">Слотов рации: <b>{slots}</b>{#if winds} · «Ветров» свободно: <b>{winds}</b>{/if}</span>
           <button class="btn primary" disabled={slots <= 0} onclick={() => game.send()}>Отправить на поиск</button>
         </div>
+        {#if winds}
+          <p class="stTxt">🚙 Пеших и кинологов подвезёт «Ветер»: в дороге не устанут и выйдут на осмотр свежими.</p>
+        {/if}
       {/if}
 
       {#if cluesHere.length}

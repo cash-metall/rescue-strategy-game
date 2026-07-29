@@ -13,10 +13,6 @@ class FxStore {
     while (this.toasts.length > 4) this.toasts.shift();
     setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 5200);
   }
-
-  remove(id: number): void {
-    this.toasts = this.toasts.filter(t => t.id !== id);
-  }
 }
 
 export const fx = new FxStore();

@@ -19,7 +19,9 @@
 
 <!-- ── Полоска здоровья пропавшего — самый важный индикатор давления ── -->
 <div class="vtrack">
-  <div class="vfill {barCls}" style:width="{s}%" class:pulse={s < 35}></div>
+  {#if !g.medicsGone}
+    <div class="vfill {barCls}" style:width="{s}%" class:pulse={s < 35}></div>
+  {/if}
 </div>
 
 <!-- ── Левая пилюля: время + погода + состояние ── -->
@@ -28,7 +30,11 @@
   <span class="sep">·</span>
   <span>{WEATHER[g.weather].icon}</span>
   <span class="sep">·</span>
-  <span class="str {barCls}">♥&nbsp;{Math.round(s)}%</span>
+  {#if g.medicsGone}
+    <span class="str crit" title="Медики уехали: найти живым — 50/50">🚑&nbsp;50/50</span>
+  {:else}
+    <span class="str {barCls}">♥&nbsp;{Math.round(s)}%</span>
+  {/if}
 </div>
 
 <!-- ── Правая пилюля: фонд + шестерёнка ── -->

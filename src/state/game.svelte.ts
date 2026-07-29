@@ -2,9 +2,10 @@ import { SvelteSet } from 'svelte/reactivity';
 import {
   newGame, simMinute, heatScores,
   actSend, actBuild, actHire, actTrain, actRecall, actMark, actExpertise, selectCell,
+  actAbandon, actQuest,
   loadCampaign, saveCampaign, resetCampaign,
 } from '../engine';
-import type { Game, Campaign, KV, Sink, Fx, BuildKey, UnitType, Verdict } from '../engine';
+import type { Game, Campaign, KV, Sink, Fx, BuildKey, UnitType, Verdict, Outcome } from '../engine';
 import { fx } from './fx.svelte';
 
 const kv: KV = typeof localStorage !== 'undefined' ? localStorage : {
@@ -19,7 +20,12 @@ function seed(camp: Campaign): Game {
 }
 
 // Модалки — эфемерное состояние UI (пауза при открытии).
-export type ModalKind = 'intro' | 'settings' | 'results' | null;
+export type ModalKind = 'intro' | 'settings' | 'results' | 'quest' | null;
+
+// Исход дела → категория статистики кампании.
+const CAT: Record<Outcome, 'alive' | 'dead' | 'missing'> = {
+  alive: 'alive', 'alive-late': 'alive', dead: 'dead', abandoned: 'missing',
+};
 
 class GameStore {
   kv: KV = kv;
@@ -49,15 +55,17 @@ class GameStore {
     const speed = this.g.ui.speed;
     for (let i = 0; i < speed; i++) {
       simMinute(this.g, this.sink);
-      if (this.g.over) break;
+      if (this.g.over || this.g.quest) break;
     }
+    // найден живым после ухода медиков — сначала мини-квест первой помощи
+    if (this.g.quest && this.modal !== 'quest') { this.paused = true; this.openModal('quest'); return; }
     if (this.g.over && !this.overHandled) this.onCaseEnd();
   }
 
   private onCaseEnd(): void {
     this.overHandled = true;
     this.paused = true;
-    this.campaign.stats[this.g.over!.win ? 'won' : 'lost']++;
+    this.campaign.stats[CAT[this.g.over!.outcome]]++;
     this.persist();
     this.openModal('results');
   }
@@ -106,6 +114,17 @@ class GameStore {
   expertise(id: number): void { actExpertise(this.g, id, this.sink); }
   select(x: number, y: number): void { selectCell(this.g, x, y, this.sink); this.sheet = 'cell'; }
 
+  /** Свернуть поиски — страховка от софтлока, единственный выход без находки. */
+  abandon(): void {
+    if (actAbandon(this.g, this.sink).ok && !this.overHandled) this.onCaseEnd();
+  }
+
+  /** Ответ в мини-квесте первой помощи. */
+  answerQuest(choice: number): void {
+    actQuest(this.g, choice, this.sink);
+    if (this.g.over) { this.modal = null; if (!this.overHandled) this.onCaseEnd(); }
+  }
+
   // выбор отрядов для отправки
   toggleUnit(id: number, on: boolean): void {
     if (on) this.g.ui.selUnits.add(id); else this.g.ui.selUnits.delete(id);
@@ -116,7 +135,6 @@ class GameStore {
     if (tab === 'clues') for (const c of this.g.clues) c.isNew = false;
   }
   closeSheet(): void { this.sheet = 'none'; }
-  setDur(d: number): void { this.g.ui.dur = d; }
   toggleHeat(): void { this.g.ui.heat = !this.g.ui.heat; }
 }
 

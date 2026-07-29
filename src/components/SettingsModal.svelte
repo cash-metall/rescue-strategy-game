@@ -1,9 +1,10 @@
 <script lang="ts">
   import { game } from '../state/game.svelte';
   import Modal from './Modal.svelte';
-  import { BUILD, TYPES, type BuildKey } from '../engine';
+  import { BUILD, TYPES, MAXLVL, lvl, type BuildKey } from '../engine';
 
   const g = $derived(game.g);
+  const st = $derived(game.campaign.stats);
   const buildKeys = Object.keys(BUILD) as BuildKey[];
 
   function reset() {
@@ -14,8 +15,9 @@
 <Modal onbackdrop={() => game.closeModal()}>
   <h2>⚙ Штаб и прогресс</h2>
   <div class="secH">Хроника</div>
-  <div class="endstat"><span>✅ Спасено человек</span><b>{game.campaign.stats.won}</b></div>
-  <div class="endstat"><span>🕯️ Не успели</span><b>{game.campaign.stats.lost}</b></div>
+  <div class="endstat"><span>✅ Найдены живыми</span><b>{st.alive}</b></div>
+  <div class="endstat"><span>🕯️ Найдены погибшими</span><b>{st.dead}</b></div>
+  <div class="endstat"><span>✖ Не найдены</span><b>{st.missing}</b></div>
 
   <div class="secH">Развитие штаба (сохраняется между делами)</div>
   <p class="mut">
@@ -27,7 +29,7 @@
   <div class="secH">Состав команд</div>
   <p class="mut">
     {#each g.units as u (u.id)}
-      {TYPES[u.type].icon} {u.name} ({'★'.repeat(u.level)})<br />
+      {TYPES[u.type].icon} {u.name} — {lvl(u.type, u.level).name} ({'★'.repeat(u.level)}{'☆'.repeat(MAXLVL - u.level)}){#if u.away} · выбыл{/if}<br />
     {/each}
   </p>
 

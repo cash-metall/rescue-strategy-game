@@ -1,22 +1,78 @@
-import type { Game, Unit, Cell, Sink, ActionResult, UnitType, BuildKey, Verdict } from './types';
-import { TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINTIME, EXPCOST } from './constants';
+import type { Game, Unit, Cell, Sink, ActionResult, UnitType, BuildKey, Verdict, Mission, Pt } from './types';
+import {
+  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, RECON_MIN, lvl, W, H,
+} from './constants';
 import { coordName, gv, fmtDur } from './util';
-import { cellAt, unitById, targetable, inRange, activeMissions, travelTime } from './access';
+import {
+  cellAt, unitById, targetable, inRange, activeMissions, available, sendBlock,
+  planTrip, searchEst, freeWinds, windCapacity, windMinutes, isNight,
+} from './access';
 import { addUnit } from './generate';
-import { pushLog, forceReturn } from './sim';
+import { pushLog, forceReturn, finalizeOver } from './sim';
+import { rollEvent } from './events';
+import { ri, rf } from './rng';
 
 const ok: ActionResult = { ok: true };
 const fail = (reason: string): ActionResult => ({ ok: false, reason });
 
-export function dispatchUnit(g: Game, u: Unit, cell: Cell): void {
-  const tr = travelTime(g, u, cell);
-  u.mission = { x: cell.x, y: cell.y, dur: g.ui.dur, travel: tr, found: [] };
+/** Отметки прохода, на которых всплывёт мусор: количество — по уровню отряда. */
+function junkMarks(u: Unit): number[] {
+  const [a, b] = lvl(u.type, u.level).junk;
+  const n = a === b ? a : ri(a, b);
+  const marks: number[] = [];
+  for (let i = 0; i < n; i++) marks.push(rf(3, 100));
+  return marks.sort((x, y) => x - y);
+}
+
+/** Квадраты, которые захватывает вылет: у вертолёта 3×3. */
+function reconCells(u: Unit, cell: Cell): Pt[] {
+  if (u.type !== 'drone' || u.level < 3) return [{ x: cell.x, y: cell.y }];
+  const out: Pt[] = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const x = cell.x + dx, y = cell.y + dy;
+    if (x >= 0 && x < W && y >= 0 && y < H) out.push({ x, y });
+  }
+  return out;
+}
+
+export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = null): void {
+  const trip = planTrip(g, u, cell, wind);
+  const est = u.type === 'drone' ? RECON_MIN : Math.min(24 * 60, searchEst(g, u, cell));
+  const m: Mission = {
+    x: cell.x, y: cell.y, travel: trip.travel, estSearch: est, swept: 0, found: [],
+    retFrom: null, route: trip.route, junkAt: junkMarks(u),
+    event: null, hops: 0, hopDir: null, carrier: trip.carrier, footShare: trip.footShare,
+    pausedUntil: 0, gps: true, radio: true, lampOut: false,
+    cells: u.type === 'drone' ? reconCells(u, cell) : undefined,
+  };
+  u.mission = m;
   u.status = 'travel';
-  u.phaseStart = g.t; u.phaseEnd = g.t + tr;
-  pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выдвинулась', 'выдвинулся')} в кв. ${coordName(cell.x, cell.y)} (в пути ~${fmtDur(tr)})`);
+  u.phaseStart = g.t; u.phaseEnd = g.t + trip.travel;
+  m.event = rollEvent(g, u, trip.travel * 2 + est);
+
+  if (wind) {
+    wind.passengers.push(u.id);
+    if (wind.status === 'idle') {
+      wind.status = 'travel';
+      wind.phaseStart = g.t;
+      wind.phaseEnd = g.t + Math.max(1, trip.windMin);
+      wind.mission = {
+        x: trip.drop.x, y: trip.drop.y, travel: Math.max(1, trip.windMin), estSearch: 0, swept: 0, found: [],
+        retFrom: null, route: trip.route, junkAt: [], event: null, hops: 0, hopDir: null, carrier: null,
+        footShare: 1, pausedUntil: 0, gps: true, radio: true, lampOut: false,
+      };
+      wind.mission.event = rollEvent(g, wind, trip.windMin * 2);
+    }
+    const tail = trip.footMin > 0 ? `, дальше ${fmtDur(trip.footMin)} пешком` : '';
+    // Имена отрядов не склоняем: строим фразу так, чтобы имя стояло в именительном.
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выехала', 'выехал')} в кв. ${coordName(cell.x, cell.y)} — подвозит ${wind.name} (в пути ~${fmtDur(trip.travel)}${tail})`);
+  } else {
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выдвинулась', 'выдвинулся')} в кв. ${coordName(cell.x, cell.y)} (в пути ~${fmtDur(trip.travel)})`);
+  }
 }
 
 export function actSend(g: Game, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
   const s = g.ui.sel;
   if (!s) return fail('no-cell');
   const cell = cellAt(g, s.x, s.y);
@@ -24,15 +80,29 @@ export function actSend(g: Game, emit: Sink): ActionResult {
   if (!inRange(g, cell)) { emit({ kind: 'toast', text: 'Квадрат вне радиуса связи. Улучшите радиостанцию.', tone: 'bad' }); return fail('out-of-range'); }
   const ids = [...g.ui.selUnits];
   if (!ids.length) { emit({ kind: 'toast', text: 'Выберите хотя бы один отряд', tone: 'bad' }); return fail('no-units'); }
+
+  // «Ветры» этого рейса: одна машина может взять несколько групп в один квадрат
+  const batch: Unit[] = [];
   let sent = 0;
   for (const id of ids) {
     const u = unitById(g, id);
-    if (!u || u.status !== 'idle') continue;
+    if (!u || !available(g, u)) continue;
+    const block = sendBlock(g, u, cell);
+    if (block) { emit({ kind: 'toast', text: block, tone: 'bad' }); continue; }
     if (activeMissions(g) >= MISSCAP[g.buildings.radio]) {
       emit({ kind: 'toast', text: `Радиостанция не потянет больше ${MISSCAP[g.buildings.radio]} групп в поле`, tone: 'bad' });
       break;
     }
-    dispatchUnit(g, u, cell);
+    let wind: Unit | null = null;
+    if (u.type === 'foot' || u.type === 'dog') {
+      wind = batch.find(w => w.passengers.length < windCapacity(w)) || null;
+      if (!wind) {
+        const cand = freeWinds(g).filter(w => !batch.includes(w) && windMinutes(g, w, g.hq, cell) != null)
+          .sort((a, b) => b.level - a.level)[0];
+        if (cand) { wind = cand; batch.push(cand); }
+      }
+    }
+    dispatchUnit(g, u, cell, wind);
     g.ui.selUnits.delete(id);
     sent++;
   }
@@ -41,6 +111,7 @@ export function actSend(g: Game, emit: Sink): ActionResult {
 }
 
 export function actBuild(g: Game, key: BuildKey, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
   const b = BUILD[key];
   const cur = g.buildings[key];
   if (cur >= b.max) return fail('maxed');
@@ -55,6 +126,7 @@ export function actBuild(g: Game, key: BuildKey, emit: Sink): ActionResult {
 }
 
 export function actHire(g: Game, type: UnitType, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
   const T = TYPES[type];
   if (g.buildings.tent < T.unlock) { emit({ kind: 'toast', text: 'Сначала улучшите штабной шатёр', tone: 'bad' }); return fail('locked'); }
   if (g.units.length >= TENTCAP[g.buildings.tent]) { emit({ kind: 'toast', text: 'В лагере нет места. Улучшите штабной шатёр.', tone: 'bad' }); return fail('full'); }
@@ -68,23 +140,43 @@ export function actHire(g: Game, type: UnitType, emit: Sink): ActionResult {
   return ok;
 }
 
-export function actTrain(g: Game, id: number, emit: Sink): ActionResult {
-  const u = unitById(g, id);
-  if (!u || u.status !== 'idle') return fail('busy');
+/** До какого уровня отряд можно обучить прямо сейчас (0 — нельзя). */
+export function trainTarget(g: Game, u: Unit): number {
   const target = u.level + 1;
-  if (target > 3 || g.buildings.train < target - 1) { emit({ kind: 'toast', text: 'Нужен учебный центр выше уровнем', tone: 'bad' }); return fail('no-center'); }
+  if (target > TRAINABLE[u.type]) return 0;
+  if (g.buildings.train < u.level) return 0;
+  return target;
+}
+
+/**
+ * Обучение мгновенное, но группа ПОКИДАЕТ дело: уровень сразу уходит в кампанию,
+ * а отряд становится недоступен до следующего поиска (docs/units.md).
+ */
+export function actTrain(g: Game, id: number, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
+  const u = unitById(g, id);
+  if (!u || !available(g, u)) return fail('busy');
+  const target = trainTarget(g, u);
+  if (!target) { emit({ kind: 'toast', text: 'Нужен учебный центр выше уровнем', tone: 'bad' }); return fail('no-center'); }
   const cost = TRAINCOST[target];
   if (g.funds < cost) { emit({ kind: 'toast', text: 'Не хватает средств', tone: 'bad' }); return fail('funds'); }
   g.funds -= cost; g.spent += cost;
-  u.status = 'train';
-  u.phaseStart = g.t; u.phaseEnd = g.t + TRAINTIME;
-  pushLog(g, `🎓 ${u.name} ${gv(u, 'направлена', 'направлен')} на обучение (${fmtDur(TRAINTIME)})`);
+  u.level = target;
+  u.away = 'training';
+  u.mission = null;
+  u.status = 'idle';
+  pushLog(g, `🎓 ${u.name} ${gv(u, 'ушла', 'ушёл')} на обучение — уровень ${target} (${lvl(u.type, target).name}). В этом деле группа больше не выйдет.`, 'good');
+  emit({ kind: 'toast', text: `🎓 ${u.name}: уровень ${target}, но группа покинула поиск`, tone: 'good' });
+  emit({ kind: 'save' });
   return ok;
 }
 
 export function actRecall(g: Game, id: number, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
   const u = unitById(g, id);
   if (!u || !u.mission || u.status === 'return') return fail('n/a');
+  // Правило живёт в движке, а не только в разметке.
+  if (g.buildings.radio < 3) { emit({ kind: 'toast', text: 'Отозвать группу с маршрута можно только с радиостанции ур. 3', tone: 'bad' }); return fail('no-radio'); }
   forceReturn(g, u, 'recall', emit);
   return ok;
 }
@@ -98,6 +190,7 @@ export function actMark(g: Game, id: number, v: Verdict, emit: Sink): ActionResu
 }
 
 export function actExpertise(g: Game, id: number, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
   if (g.buildings.carto < 1) { emit({ kind: 'toast', text: 'Нужен картограф', tone: 'bad' }); return fail('no-carto'); }
   const c = g.clues.find(x => x.id === id);
   if (!c || c.exp) return fail('n/a');
@@ -110,10 +203,69 @@ export function actExpertise(g: Game, id: number, emit: Sink): ActionResult {
   return ok;
 }
 
+/** Свернуть поиски — единственный способ закончить дело без находки (страховка от софтлока). */
+export function actAbandon(g: Game, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
+  pushLog(g, '✖ Поиски свёрнуты по решению штаба. Пропавший не найден.', 'bad');
+  emit({ kind: 'toast', text: '✖ Операция свёрнута', tone: 'bad' });
+  finalizeOver(g, 'abandoned', null);
+  return ok;
+}
+
 export function selectCell(g: Game, x: number, y: number, emit: Sink): void {
   const cell = cellAt(g, x, y);
   if (!inRange(g, cell) && targetable(cell)) {
     emit({ kind: 'toast', text: 'Квадрат вне радиуса связи — улучшите радиостанцию', tone: 'bad' });
   }
   g.ui.sel = { x, y };
+}
+
+// --- Мини-квест первой помощи (заглушка, docs/outcome.md) ---
+
+export interface QuestStep { q: string; opts: { text: string; good: boolean }[] }
+
+export const QUEST: QuestStep[] = [
+  {
+    q: 'Человек лежит на боку, дышит поверхностно, на голос почти не реагирует. Что делаете?',
+    opts: [
+      { text: 'Проверить дыхание и пульс, укрыть, не двигать', good: true },
+      { text: 'Сразу поднять и нести к машине', good: false },
+      { text: 'Дать воды и попытаться поднять на ноги', good: false },
+    ],
+  },
+  {
+    q: 'Кожа холодная, одежда мокрая, признаков травм не видно.',
+    opts: [
+      { text: 'Снять мокрое, укрыть, тёплое питьё малыми порциями', good: true },
+      { text: 'Растереть спиртом и дать глоток для согрева', good: false },
+      { text: 'Ничего не делать, ждать медиков', good: false },
+    ],
+  },
+  {
+    q: 'До ближайшей проезжей точки — 900 метров по чаще.',
+    opts: [
+      { text: 'Носилки из подручных, вынести к «Ветру», скорую — к точке выезда', good: true },
+      { text: 'Вести под руки пешком до штаба', good: false },
+      { text: 'Ждать вертолёт на месте', good: false },
+    ],
+  },
+];
+
+export function actQuest(g: Game, choice: number, emit: Sink): ActionResult {
+  const q = g.quest;
+  if (!q) return fail('no-quest');
+  const step = QUEST[q.step];
+  if (!step) return fail('n/a');
+  const opt = step.opts[choice];
+  if (!opt) return fail('bad-choice');
+  if (opt.good) { q.correct++; pushLog(g, `🩹 ${opt.text} — верно.`, 'good'); }
+  else pushLog(g, `🩹 ${opt.text} — так делать не стоило.`, 'warn');
+  q.step++;
+  if (q.step >= QUEST.length) {
+    const good = q.correct;
+    pushLog(g, `🚁 Пострадавший передан медикам. Верных решений: ${good} из ${QUEST.length}.`, good >= 2 ? 'good' : 'warn');
+    emit({ kind: 'toast', text: good >= 2 ? '🩹 Передан медикам в стабильном состоянии' : '🩹 Состояние тяжёлое, но жив', tone: good >= 2 ? 'good' : 'bad' });
+    finalizeOver(g, 'alive-late', q.by, good);
+  }
+  return ok;
 }
