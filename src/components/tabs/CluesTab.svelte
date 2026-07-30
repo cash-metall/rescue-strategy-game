@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { slide } from 'svelte/transition';
   import { game } from '../../state/game.svelte';
   import { EXPCOST, EXPREWARD, EXPT, coordName, fmtTimeAt, effMark, dirName, dirArrow } from '../../engine';
 
@@ -13,7 +14,7 @@
     {@const m = effMark(c)}
     {@const cls = c.verdict === 'real' ? 'vreal' : m === 'real' ? 'mreal' : m === 'junk' ? 'mjunk' : ''}
     {@const canExp = g.buildings.carto >= 1 && !c.exp}
-    <div class="card clue {cls}">
+    <div class="card clue {cls}" in:slide={{ duration: 220 }}>
       <div class="meta">
         {c.noPos ? 'без координат' : 'кв. ' + coordName(c.x, c.y)} · {fmtTimeAt(c.tFound)}{c.noPos ? ' · 🛰️ навигатор сел' : ''}
         {#if c.verdict === 'real'}<span class="vb real">✓ подтверждено</span>
