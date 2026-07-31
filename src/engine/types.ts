@@ -80,9 +80,10 @@ export interface Mission {
   event: MissionEvent | null;
   hops: number;            // переходы следовой собаки (максимум 1)
   hopDir: number | null;   // направление найденного следа — куда собака поведёт группу
-  carrier: number | null;  // id «Ветра», который вёз группу
+  carrier: number | null;  // id «Ветра»: вёз группу туда либо едет за ней обратно
+  aboard: boolean;         // группа уже в машине на обратной дороге (едет, а не идёт)
   footShare: number;       // доля пути, пройденная пешком (0 = всю дорогу везли)
-  pausedUntil: number;     // вынужденная остановка (пробитое колесо)
+  pausedUntil: number;     // вынужденная остановка (пробитое колесо у «Ветра»)
   gps: boolean;            // работает ли навигатор
   radio: boolean;          // работает ли рация группы
   lampOut: boolean;        // сел фонарь

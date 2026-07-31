@@ -84,28 +84,33 @@
 
 ```bash
 npm install
-npm run dev        # dev-сервер с HMR → http://localhost:5173/rescue-strategy-game/
+npm run dev        # dev-сервер с HMR → http://localhost:5173/
 ```
 
 Собрать прод-версию и посмотреть её:
 
 ```bash
 npm run build      # → статика в dist/
-npm run preview    # → http://localhost:4173/rescue-strategy-game/
+npm run preview    # → http://localhost:4173/
 ```
 
 > [!IMPORTANT]
-> Сборка настроена на подкаталог: `vite.config.ts` задаёт `base: '/rescue-strategy-game/'`. Адрес
-> **обязательно с этим путём** — по корню (`localhost:5173/`) приложение не поднимется, а статика
-> вернёт 404. Это же касается любого статического сервера: `dist/` надо раздавать так, чтобы игра
-> открывалась по `/rescue-strategy-game/`, иначе скрипт, стили и SVG не найдутся.
+> Базовый путь сборки задаётся переменной окружения: `vite.config.ts` берёт
+> `base: process.env.VITE_BASE ?? '/'`. По умолчанию игра рассчитана на **корень домена** — так её
+> раздаёт любой статический сервер и так же работают `dev` и `preview`. Чтобы собрать под
+> подкаталог, передайте путь явно:
+>
+> ```bash
+> VITE_BASE=/rescue-strategy-game/ npm run build
+> ```
+>
+> Пути к скрипту, стилям и SVG считаются от этой базы, поэтому адрес раздачи и `VITE_BASE` должны
+> совпадать — иначе ассеты вернут 404.
 
-Например, через Python — с промежуточной папкой, повторяющей базовый путь:
+Например, через Python:
 
 ```bash
-mkdir -p serve/rescue-strategy-game
-cp -r dist/. serve/rescue-strategy-game/
-cd serve && python -m http.server 8000   # → http://localhost:8000/rescue-strategy-game/
+cd dist && python -m http.server 8000   # → http://localhost:8000/
 ```
 
 > [!NOTE]
@@ -115,11 +120,12 @@ cd serve && python -m http.server 8000   # → http://localhost:8000/rescue-stra
 ## 🚀 Деплой
 
 GitHub Pages собирает игру сам: `.github/workflows/deploy.yml` на каждый push в `main` выполняет
-`npm ci && npm run build` и публикует свежий `dist/`. Руками ничего запускать не нужно.
+`npm ci && npm run build` с `VITE_BASE=/rescue-strategy-game/` и публикует свежий `dist/`. Руками
+ничего запускать не нужно.
 
-Для стороннего хостинга: `npm run build` и отдать `dist/` **по пути `/rescue-strategy-game/`** (см.
-предупреждение выше) — либо поменять `base` в `vite.config.ts` под целевой адрес и пересобрать.
-Папка `dist/` закоммичена для ручной передачи, но опубликованный сайт всегда из свежей сборки CI.
+Для стороннего хостинга: `npm run build` и отдать `dist/` по корню домена. Если игра должна жить в
+подкаталоге — пересобрать с `VITE_BASE=/этот/путь/`. Папка `dist/` закоммичена для ручной передачи
+(собрана под корень), но опубликованный на Pages сайт всегда из свежей сборки CI.
 
 ## 📂 Структура
 
@@ -143,7 +149,7 @@ legacy/         первая однофайловая версия (rescue-hq.ht
 UI не может незаметно изменить механику.
 
 ```bash
-npm test           # 33 теста: генерация карт, авто-игрок (баланс), кампания, механики
+npm test           # 35 тестов: генерация карт, авто-игрок (баланс), кампания, механики
 npm run check      # проверка типов (svelte-check)
 ```
 

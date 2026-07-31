@@ -41,7 +41,7 @@ export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = n
   const m: Mission = {
     x: cell.x, y: cell.y, travel: trip.travel, estSearch: est, swept: 0, found: [],
     retFrom: null, route: trip.route, junkAt: junkMarks(u),
-    event: null, hops: 0, hopDir: null, carrier: trip.carrier, footShare: trip.footShare,
+    event: null, hops: 0, hopDir: null, carrier: trip.carrier, aboard: false, footShare: trip.footShare,
     pausedUntil: 0, gps: true, radio: true, lampOut: false,
     cells: u.type === 'drone' ? reconCells(u, cell) : undefined,
   };
@@ -59,7 +59,7 @@ export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = n
       wind.mission = {
         x: trip.drop.x, y: trip.drop.y, travel: Math.max(1, trip.windMin), estSearch: 0, swept: 0, found: [],
         retFrom: null, route: trip.route, junkAt: [], event: null, hops: 0, hopDir: null, carrier: null,
-        footShare: 1, pausedUntil: 0, gps: true, radio: true, lampOut: false,
+        aboard: false, footShare: 1, pausedUntil: 0, gps: true, radio: true, lampOut: false,
       };
       wind.mission.event = rollEvent(g, wind, trip.windMin * 2);
     }

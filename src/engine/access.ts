@@ -172,63 +172,75 @@ function routeFloat(route: Pt[], p: number, reverse: boolean): { x: number; y: n
   };
 }
 
+/** Где отряд находится прямо сейчас — дробные координаты клетки. null — он не в поле. */
+export function unitFloat(g: Game, u: Unit): Pt | null {
+  const m = u.mission;
+  if (!m) return null;
+  const p = clamp((g.t - u.phaseStart) / Math.max(1, u.phaseEnd - u.phaseStart), 0, 1);
+
+  // Своим ходом: по маршруту, а если маршрута нет — по прямой.
+  // rev = обратная дорога (от точки возврата к штабу).
+  const walk = (rev: boolean): Pt => {
+    const r = m.route;
+    if (r && r.length > 1) return routeFloat(r, p, rev);
+    const a = rev ? (m.retFrom || m) : g.hq;
+    const b = rev ? g.hq : m;
+    return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
+  };
+  // В машине: позиция «Ветра». null — машины рядом нет (высадил или ещё не доехал),
+  // значит отряд идёт сам.
+  const ride = (rev: boolean): Pt | null => {
+    const car = m.carrier != null ? unitById(g, m.carrier) : undefined;
+    if (!car?.mission?.route || car.status !== (rev ? 'return' : 'travel')) return null;
+    const cp = clamp((g.t - car.phaseStart) / Math.max(1, car.phaseEnd - car.phaseStart), 0, 1);
+    return routeFloat(car.mission.route, cp, rev);
+  };
+
+  if (u.status === 'search') return { x: m.x, y: m.y };
+  if (u.status === 'travel') return ride(false) || walk(false);
+  if (u.status === 'return') return (m.aboard ? ride(true) : null) || walk(true);
+  return null;
+}
+
+/** Клетка, в которой отряд находится сейчас — для подбора «Ветром» по дороге. */
+export function unitCell(g: Game, u: Unit): Pt {
+  const f = unitFloat(g, u) || u.mission || g.hq;
+  return {
+    x: Math.round(clamp(f.x, 0, W - 1)),
+    y: Math.round(clamp(f.y, 0, H - 1)),
+  };
+}
+
 export interface UnitFloat { id: number; type: UnitType; x: number; y: number; }
 
-/** Дробные (float) координаты клетки для каждого отряда в поле.
- *  Используется рендером для плавного движения по карте. */
+const FAN_R = 0.24;   // радиус разброса иконок внутри клетки, в долях клетки
+
+/** Дробные координаты всех отрядов в поле — рендер рисует по ним плавное движение.
+ *  Отряды, стоящие в одной клетке, разводятся веером: иначе иконки полностью
+ *  перекрывают друг друга и в квадрате «видно» только один отряд. */
 export function unitFloatPositions(g: Game): UnitFloat[] {
   const result: UnitFloat[] = [];
   for (const u of g.units) {
-    if (!u.mission) continue;
-    const m = u.mission;
-    const p = clamp((g.t - u.phaseStart) / Math.max(1, u.phaseEnd - u.phaseStart), 0, 1);
-    let x: number, y: number;
+    const f = unitFloat(g, u);
+    if (!f) continue;
+    result.push({ id: u.id, type: u.type, x: clamp(f.x, 0, W - 1), y: clamp(f.y, 0, H - 1) });
+  }
 
-    if (u.status === 'travel') {
-      if (m.carrier != null) {
-        // Пассажир в машине: позиция = позиция Ветра, пока он едет туда.
-        const car = g.units.find(w => w.id === m.carrier);
-        if (car?.status === 'travel' && car.mission?.route) {
-          const cp = clamp((g.t - car.phaseStart) / Math.max(1, car.phaseEnd - car.phaseStart), 0, 1);
-          const pos = routeFloat(car.mission.route, cp, false);
-          x = pos.x; y = pos.y;
-        } else {
-          // Ветер высадил — идём пешком по своему маршруту.
-          const r = m.route;
-          if (r && r.length > 1) { const pos = routeFloat(r, p, false); x = pos.x; y = pos.y; }
-          else { x = g.hq.x + (m.x - g.hq.x) * p; y = g.hq.y + (m.y - g.hq.y) * p; }
-        }
-      } else {
-        const r = m.route;
-        if (r && r.length > 1) { const pos = routeFloat(r, p, false); x = pos.x; y = pos.y; }
-        else { x = g.hq.x + (m.x - g.hq.x) * p; y = g.hq.y + (m.y - g.hq.y) * p; }
-      }
-    } else if (u.status === 'search') {
-      x = m.x; y = m.y;
-    } else if (u.status === 'return') {
-      if (m.carrier != null && g.t < m.pausedUntil) {
-        // Ждём Ветра — стоим на месте.
-        x = m.x; y = m.y;
-      } else if (m.carrier != null) {
-        // Едем обратно с Ветром.
-        const car = g.units.find(w => w.id === m.carrier);
-        if (car?.status === 'return' && car.mission?.route) {
-          const cp = clamp((g.t - car.phaseStart) / Math.max(1, car.phaseEnd - car.phaseStart), 0, 1);
-          const pos = routeFloat(car.mission.route, cp, true);
-          x = pos.x; y = pos.y;
-        } else {
-          const r = m.route;
-          if (r && r.length > 1) { const pos = routeFloat(r, p, true); x = pos.x; y = pos.y; }
-          else { const s = m.retFrom || m; x = s.x + (g.hq.x - s.x) * p; y = s.y + (g.hq.y - s.y) * p; }
-        }
-      } else {
-        const r = m.route;
-        if (r && r.length > 1) { const pos = routeFloat(r, p, true); x = pos.x; y = pos.y; }
-        else { const s = m.retFrom || m; x = s.x + (g.hq.x - s.x) * p; y = s.y + (g.hq.y - s.y) * p; }
-      }
-    } else continue;
-
-    result.push({ id: u.id, type: u.type, x: clamp(x, 0, W - 1), y: clamp(y, 0, H - 1) });
+  // Смещение зависит только от номера отряда внутри клетки, поэтому иконка стоит
+  // ровно, пока состав клетки не меняется.
+  const byCell = new Map<string, UnitFloat[]>();
+  for (const p of result) {
+    const k = Math.round(p.x) + ',' + Math.round(p.y);
+    const arr = byCell.get(k);
+    if (arr) arr.push(p); else byCell.set(k, [p]);
+  }
+  for (const arr of byCell.values()) {
+    if (arr.length < 2) continue;
+    arr.forEach((p, i) => {
+      const a = Math.PI + (2 * Math.PI * i) / arr.length;   // n = 2 → строго слева и справа
+      p.x += Math.cos(a) * FAN_R;
+      p.y += Math.sin(a) * FAN_R;
+    });
   }
   return result;
 }

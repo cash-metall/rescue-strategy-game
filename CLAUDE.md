@@ -51,18 +51,19 @@
 
 ```bash
 npm install
-npm run dev      # dev-сервер с HMR → http://localhost:5173/rescue-strategy-game/
-npm run build    # прод-сборка → dist/
-npm run preview  # показать собранный dist/ → http://localhost:4173/rescue-strategy-game/
+npm run dev      # dev-сервер с HMR → http://localhost:5173/
+npm run build    # прод-сборка → dist/ (nginx). Для Pages: VITE_BASE=/rescue-strategy-game/
+npm run preview  # показать собранный dist/ → http://localhost:4173/
 npm run check    # svelte-check (типы) — должно быть 0 ошибок
 npm test         # vitest — тесты движка (генерация, авто-игрок/баланс, кампания)
 npm run test:watch  # vitest в watch-режиме
 ```
 
-**Внимание к адресу.** `vite.config.ts` задаёт `base: '/rescue-strategy-game/'` — по корню
-(`localhost:5173/`) приложение не поднимется, и `dist/index.html` нельзя открыть по `file://`.
-Конфиг vitest живёт внутри `vite.config.ts`, отдельного `vitest.config.*` нет; тест вне `src/test/`
-или без суффикса `.test.ts` молча не запустится, а `npm test` идёт с `--passWithNoTests`.
+**Внимание к адресу.** `vite.config.ts` задаёт `base: process.env.VITE_BASE ?? '/'` — по умолчанию
+корень домена. Подкаталог подставляет только GitHub Actions. По `file://` `dist/index.html` не
+открывается ни при какой базе. Конфиг vitest живёт внутри `vite.config.ts`, отдельного
+`vitest.config.*` нет; тест вне `src/test/` или без суффикса `.test.ts` молча не запустится,
+а `npm test` идёт с `--passWithNoTests`.
 
 ## Структура
 
@@ -75,7 +76,7 @@ src/
   components/ MapHUD (шапка карты), MapGrid/MapCell, CellSheet, TabBar/TabPanel, tabs/*,
               Modal + Intro/Settings/Results/Quest, Toasts, ResultsFab
   styles/     tokens.css (переменные), global.css (reset + язык карты/панелей/модалок, unscoped)
-  test/       generation / autoplayer / campaign / mechanics — vitest (33 теста)
+  test/       generation / autoplayer / campaign / mechanics — vitest (35 тестов)
 public/images/  SVG-ассеты (топознаки местности, юниты, штаб, маркеры)
 dist/           собранная игра, закоммичена — для ручной передачи. GitHub Pages при этом раздаёт
                 НЕ её: .github/workflows/deploy.yml пересобирает проект на каждый push в main
@@ -89,7 +90,12 @@ legacy/         оригинальная однофайловая версия r
   колбэк `Sink`; журнал пишет в `g.log` (данные). Это «замок баланса»: логика тестируется без браузера.
 - **Реактивность вместо ручного диффинга.** `g = $state(...)` — глубокий прокси; `simMinute` мутирует
   его, обновляются только читающие компоненты. Никаких `dirty`/`innerHTML`-перерисовок.
-- **Тик-луп** — в `App.onMount` (`setInterval(tick,250)` + `clearInterval`). Не класть в `$effect`.
+- **Тик-луп** — в `App.onMount` (`requestAnimationFrame` + `cancelAnimationFrame`). Не класть в `$effect`.
+- **Скорость игры меняется ТОЛЬКО через `GAME_MIN_PER_SEC` и `timeScale`** (`state/game.svelte.ts`).
+  `tick(dt)` зовётся каждый кадр и копит игровые минуты по реальному времени. Замедлять игру
+  пропуском кадров, троттлингом rAF, `setInterval` или растягиванием `--move-ms` **нельзя**:
+  анимация движения отрядов привязана к шагу симуляции и от такого «замедления» начинает дёргаться.
+  Сейчас 1× / 2× / 4× = 2 / 4 / 8 игровых минут на реальную секунду.
 - **Русский язык в UI: следить за родом.** У юнитов и профилей есть поле `gen` (`'f'`/`'m'`), для
   глаголов — хелпер `gv(u,'вернулась','вернулся')`. Имена отрядов **не склоняем** — фразу строим так,
   чтобы имя стояло в именительном («выехал за группой в кв. D8 (Лиса-2)», а не «забрать Лису-2»).

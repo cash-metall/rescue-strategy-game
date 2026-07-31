@@ -7,9 +7,10 @@ import {
 import { ri, rf, rnd, pick } from './rng';
 import { cheb, coordName, gv, plural, dirName } from './util';
 import {
-  cellAt, clueById, isNight, hourOf, detectEff, coverRate, searchEst, restRate,
+  cellAt, clueById, unitById, unitCell, isNight, hourOf, detectEff, coverRate, searchEst, restRate,
   freeWinds, windMinutes, windCapacity, readsDir, planTrip, available,
 } from './access';
+import { findPath } from './path';
 import { rollEvent, applyEvent, lampSlow } from './events';
 import { junkTemplates } from './generate';
 
@@ -137,7 +138,8 @@ export function stepUnit(g: Game, u: Unit, emit: Sink): void {
       const m = u.mission!;
       if (g.t < m.pausedUntil) break;
       if (u.type !== 'wind') {
-        const share = m.carrier ? 0 : 1;
+        // Устаёт, пока идёт сама. В машине (aboard) — нет; ждать её она не ждёт.
+        const share = m.aboard ? 0 : 1;
         u.fatigue = Math.min(100, u.fatigue + T.fatT * lvl(u.type, u.level).fat * 0.6 * share * (u.type === 'dog' ? DOG_FOOT_FAT : 1));
       }
       if (g.t >= u.phaseEnd) arrive(g, u, emit);
@@ -167,23 +169,47 @@ function windArrived(g: Game, u: Unit, emit: Sink): void {
       }
     }
   }
-  // Реальное время обратной дороги от ячейки до штаба (игнорирует m.travel,
-  // который мог быть перезаписан логикой второго пассажира).
-  const directBack = windMinutes(g, u, { x: m.x, y: m.y }, g.hq);
-  const returnMin = Math.max(1, Math.round((directBack ?? m.travel) * lampSlow(g, u)));
-  // Подбор ждущих пассажиров: привязать их прибытие к реальному времени Ветра.
+  // Кого забираем. Группа машину не ждала — она шла пешком навстречу, поэтому
+  // подбираем её там, где она успела оказаться, а не там, куда «Ветер» ехал.
+  let meet: Pt = { x: m.x, y: m.y };
+  const riders: Unit[] = [];
   for (const pid of u.passengers) {
-    const pass = g.units.find(p => p.id === pid);
-    if (pass?.status === 'return' && pass.mission?.x === m.x && pass.mission?.y === m.y) {
-      pass.phaseEnd = g.t + returnMin;
-      pass.mission.pausedUntil = 0;
-      pushLog(g, `🚙 ${u.name} ${gv(u, 'забрала', 'забрал')} в кв. ${coordName(m.x, m.y)}: ${pass.name}`);
+    const pass = unitById(g, pid);
+    if (!pass?.mission || pass.status !== 'return') continue;   // уже дошла до лагеря либо ещё работает
+    const at = unitCell(g, pass);
+    if (windMinutes(g, u, at, g.hq) == null) {                  // в такую глушь не подъехать
+      pass.mission.carrier = null;
+      pushLog(g, `🚙 ${u.name}: до кв. ${coordName(at.x, at.y)} не подъехать — ${pass.name} возвращается пешком`, 'warn');
+      continue;
     }
+    if (!riders.length) meet = at;                              // разворачиваемся у первой группы
+    riders.push(pass);
   }
+
+  // Время обратной дороги — от точки встречи. Крюк за остальными не считаем,
+  // но машина физически не может приехать в лагерь раньше тех, кого везёт:
+  // у «Ветра» и у всех пассажиров одно и то же время прибытия.
+  const backMin = windMinutes(g, u, meet, g.hq) ?? m.travel;
+  const returnMin = Math.max(1, Math.round(backMin * lampSlow(g, u)));
+
+  for (const p of riders) {
+    const pm = p.mission!;
+    pm.aboard = true;
+    p.phaseStart = g.t;
+    p.phaseEnd = g.t + returnMin;
+    pm.retFrom = { ...meet };
+    pushLog(g, `🚙 ${u.name} ${gv(u, 'забрала', 'забрал')} в кв. ${coordName(meet.x, meet.y)}: ${p.name}`);
+  }
+
   u.status = 'return';
   u.phaseStart = g.t;
   u.phaseEnd = g.t + returnMin;
-  m.retFrom = { x: m.x, y: m.y };
+  m.retFrom = { ...meet };
+  // Обратный ход рисуется по маршруту задом наперёд, поэтому путь храним как штаб → точка встречи.
+  if (meet.x !== m.x || meet.y !== m.y) {
+    const wp = findPath(g, g.hq, meet, 'wind', u.level);
+    if (wp.reached) m.route = wp.cells;
+  }
 }
 
 const fresh = (tier: number): string => tier < 0.34 ? 'примерно суточной давности' : (tier < 0.7 ? 'довольно свежий' : 'совсем свежий');
@@ -361,19 +387,18 @@ export function forceReturn(g: Game, u: Unit, reason: ReturnReason, emit: Sink):
     ret = m.travel;
     m.retFrom = null;
   }
-  // обратная дорога: если есть свободный «Ветер» и связь — заберёт
+  // обратная дорога: если есть свободный «Ветер» и связь — он выедет навстречу.
+  // Время возврата при этом не меняется: группа идёт пешком, пока машина её не догонит
+  // (windArrived пересчитает прибытие по точке встречи). Поэтому здесь она — пешая,
+  // со всеми пешими штрафами.
   if (reason !== 'radioDead' && m.radio && u.type !== 'wind' && u.type !== 'drone') {
-    const picked = tryPickup(g, u, emit);
-    if (picked != null) ret = picked;
-    else m.carrier = null;
+    if (!tryPickup(g, u, emit)) m.carrier = null;
   } else {
     m.carrier = null;
   }
-  // Усталость и темп фонаря — только при пешем возврате: пассажир Ветра едет, не идёт.
-  if (!m.carrier) {
-    if (u.fatigue >= 100) ret = Math.round(ret * 1.3);
-    ret = Math.max(1, Math.round(ret * lampSlow(g, u)));
-  }
+  m.aboard = false;
+  if (u.fatigue >= 100) ret = Math.round(ret * 1.3);
+  ret = Math.max(1, Math.round(ret * lampSlow(g, u)));
   u.status = 'return';
   u.phaseStart = g.t; u.phaseEnd = g.t + ret;
 
@@ -385,12 +410,11 @@ export function forceReturn(g: Game, u: Unit, reason: ReturnReason, emit: Sink):
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
 
-/** Пробует выслать свободный «Ветер» за группой. Возвращает время возврата или null. */
-function tryPickup(g: Game, u: Unit, _emit: Sink): number | null {
+/** Пробует выслать свободный «Ветер» навстречу группе. true — машина выехала. */
+function tryPickup(g: Game, u: Unit, _emit: Sink): boolean {
   const m = u.mission!;
   const cell = cellAt(g, m.x, m.y);
   for (const w of freeWinds(g)) {
-    if (w.passengers.length >= windCapacity(w)) continue;
     const there = windMinutes(g, w, g.hq, cell);
     if (there == null) continue;
     // «Ветер» выезжает навстречу
@@ -400,40 +424,35 @@ function tryPickup(g: Game, u: Unit, _emit: Sink): number | null {
     w.passengers = [u.id];
     w.mission = {
       x: m.x, y: m.y, travel: there, estSearch: 0, swept: 0, found: [], retFrom: null, route: trip.route,
-      junkAt: [], event: null, hops: 0, hopDir: null, carrier: null, footShare: 1, pausedUntil: 0,
-      gps: true, radio: true, lampOut: false,
+      junkAt: [], event: null, hops: 0, hopDir: null, carrier: null, aboard: false, footShare: 1,
+      pausedUntil: 0, gps: true, radio: true, lampOut: false,
     };
     m.carrier = w.id;
-    m.pausedUntil = g.t + there;  // группа ждёт Ветра в ячейке, не уходит сама
-    pushLog(g, `🚙 ${w.name} выехал за группой в кв. ${coordName(m.x, m.y)} (${u.name})`);
+    pushLog(g, `🚙 ${w.name} выехал навстречу группе из кв. ${coordName(m.x, m.y)} (${u.name})`);
 
     // Опытный водитель (ур. 2+) заодно подберёт вторую группу, если крюк невелик.
-    let ride = there * 2;
+    // Время поездки от этого не растёт — крюк «бесплатен» (см. windArrived).
     if (w.level >= 2 && w.passengers.length < windCapacity(w)) {
       const budget = Math.max(8, Math.round(there * 0.5));
-      let bestU: Unit | null = null, bestDetour = Infinity, bestHome = 0;
+      let bestU: Unit | null = null, bestDetour = Infinity;
       for (const o of g.units) {
         if (o === u || o.type === 'wind' || !o.mission) continue;
         if (o.status !== 'return' || o.mission.carrier != null || !o.mission.radio) continue;
         const oc = cellAt(g, o.mission.x, o.mission.y);
         const detour = windMinutes(g, w, cell, oc);
-        const home = windMinutes(g, w, oc, g.hq);
-        if (detour == null || home == null || detour > budget) continue;
-        if (detour < bestDetour) { bestU = o; bestDetour = detour; bestHome = home; }
+        if (detour == null || detour > budget) continue;
+        if (windMinutes(g, w, oc, g.hq) == null) continue;    // оттуда домой не выехать
+        if (detour < bestDetour) { bestU = o; bestDetour = detour; }
       }
       if (bestU) {
-        const total = there + bestDetour + bestHome;
         w.passengers.push(bestU.id);
-        w.mission.travel = total;
-        bestU.mission!.carrier = w.id;
-        bestU.phaseStart = g.t; bestU.phaseEnd = g.t + total;
-        ride = total;
+        bestU.mission!.carrier = w.id;   // время не трогаем: тоже идёт пешком, пока не подберут
         pushLog(g, `🚙 ${w.name} по дороге захватит и ${bestU.name} из кв. ${coordName(bestU.mission!.x, bestU.mission!.y)} (крюк ${bestDetour} мин)`);
       }
     }
-    return ride;
+    return true;
   }
-  return null;
+  return false;
 }
 
 export function arrive(g: Game, u: Unit, emit: Sink): void {

@@ -29,9 +29,11 @@ index.html → src/main.ts → mount(App)
   `let HQ = {x:5, y:11}`; в движке лагерь выбирается под каждое дело в `tryGen`).
 - `buildings{tent,radio,carto,rest,train}`, `units[]`, `clues[]`, `log[]`, `stats`, `over`.
 - `expRuns[]` / `expQueue[]` — активные и ожидающие экспертизы.
-- **`ui{tab, sel, selUnits, heat, speed}` — состояние интерфейса лежит внутри `Game`.** Стор
-  своих полей для вкладки, выбора и скорости не имеет; это сознательный компромисс, позволяющий
+- **`ui{tab, sel, selUnits, heat}` — состояние интерфейса лежит внутри `Game`.** Стор
+  своих полей для вкладки и выбора не имеет; это сознательный компромисс, позволяющий
   движку менять UI-состояние (например `actSend` вычёркивает отряды из `ui.selUnits`).
+  Скорость времени — исключение: она живёт в сторе (`GameStore.timeScale`), потому что движок
+  о ней ничего не знает и в дело её сохранять незачем.
 - `medicsGone`, `quest`, `sightings` — фаза «медики уехали», мини-квест первой помощи и наводки
   «возможная цель» (см. [outcome.md](outcome.md), [units.md](units.md)).
 - Прежнее мёртвое поле `paused` удалено: единственный флаг паузы — `GameStore.paused`.
@@ -62,7 +64,7 @@ HTML; форматирует их `LogTab`).
 `cellAt, clueById, unitById, effMark, hourOf, isNight, activeMissions, missionSlots, inRange,
 targetable, fatEff, detectEff, coverRate, searchEst, restRate, available, isBusy, needsRest,
 freeWinds, windCapacity, windMinutes, planTrip, sendBlock, readsDir, lvlName, awayCount,
-unitPositions, travelTime`. Игра идёт **первым аргументом** там, где нужны погода, ночь или `g.hq` —
+unitFloat, unitCell, unitFloatPositions, travelTime`. Игра идёт **первым аргументом** там, где нужны погода, ночь или `g.hq` —
 например `coverRate(g, u, cell)` и `planTrip(g, u, cell, wind)`.
 
 Два новых модуля: `path.ts` — Дейкстра по 8 направлениям с ценой клетки из `PATHCOST` и
@@ -80,7 +82,7 @@ unitPositions, travelTime`. Игра идёт **первым аргументо�
 Два синглтона, создаваемых при импорте модуля: `game = new GameStore()` (`state/game.svelte.ts`) и
 `fx = new FxStore()` (`state/fx.svelte.ts`).
 
-`GameStore` содержит ровно 7 рун-полей:
+`GameStore` содержит ровно 8 рун-полей:
 
 ```ts
 campaign = $state<Campaign>(loadCampaign(kv))
@@ -90,10 +92,13 @@ modal    = $state<ModalKind>('intro')   // 'intro' | 'settings' | 'results' | 'q
 introStart = $state(true)               // интро как начало дела (true) или как справка
 sheet    = $state<'none' | 'cell' | 'tabs'>('none')   // мобильные bottom-sheet
 resultsFab = $state(false)
+timeScale = $state(1)                   // множитель скорости 1× / 2× / 4×, в сейв не идёт
 ```
 
-и один `$derived`: `heat = $derived(g.ui.heat && g.buildings.carto >= 1 ? heatScores(g) : null)`.
-Приватные `pausedBeforeModal` и `overHandled` — намеренно **не** руны: их не читает разметка.
+один `$derived`: `heat = $derived(g.ui.heat && g.buildings.carto >= 1 ? heatScores(g) : null)` и
+один геттер `stepMs` (реальных мс на шаг симуляции — нужен рендеру для длительности анимаций).
+Приватные `pausedBeforeModal`, `overHandled` и накопитель времени `acc` — намеренно **не** руны:
+их не читает разметка.
 
 **Ключевой механизм.** `g` — глубокий `$state`-прокси; `simMinute(g, sink)` мутирует его на месте, и
 перерисовываются только те компоненты, которые читают изменившееся поле. В `src` нет ни флага
@@ -115,15 +120,33 @@ resultsFab = $state(false)
 Луп живёт в `App.onMount`, **не в `$effect`**:
 
 ```ts
-onMount(() => { const id = setInterval(() => game.tick(), 250); return () => clearInterval(id); });
+onMount(() => {
+  let raf = 0, last = performance.now();
+  const frame = (now: number) => { game.tick(now - last); last = now; raf = requestAnimationFrame(frame); };
+  raf = requestAnimationFrame(frame);
+  return () => cancelAnimationFrame(raf);
+});
 ```
 
-- `tick()` выходит сразу при `paused || g.over || modal` — модалка морозит время **самим фактом
-  открытия**, `paused` при этом не трогается.
-- **Скорость — это число прогонов, а не частота таймера:** `for (let i = 0; i < g.ui.speed; i++)
-  simMinute(...)`. 1× / 2× / 4× = 4 / 8 / 16 игровых минут на реальную секунду.
-- `setSpeed(s)` заодно снимает пузу (`paused = false`); `pause()` только ставит флаг, `ui.speed` не
-  сбрасывает — поэтому `MapHUD` возобновляет игру как `setSpeed(g.ui.speed || 1)`.
+- **Игровое время отвязано от частоты кадров.** `tick(dt)` зовётся каждый кадр с реальным `dt` и
+  копит игровые минуты в накопителе `acc`, а симуляция крутится фиксированными шагами по одной
+  минуте: `while (acc >= 1) { acc -= 1; simMinute(...) }`. Просадка FPS меняет плавность картинки,
+  но не темп игры.
+- **Скорость — это множитель `timeScale`, и больше ничего.**
+  `acc += dt/1000 × GAME_MIN_PER_SEC × timeScale`, где `GAME_MIN_PER_SEC = 2`.
+  1× / 2× / 4× = **2 / 4 / 8** игровых минут на реальную секунду.
+  Замедлять игру пропуском кадров или троттлингом рендера **нельзя** — только этой константой:
+  анимации движения привязаны к шагу симуляции и от такой «оптимизации» начинают дёргаться.
+- `stepMs = 1000 / (GAME_MIN_PER_SEC × timeScale)` — производная величина: сколько реальных
+  миллисекунд занимает один шаг. `MapGrid` отдаёт её в CSS как `--move-ms` (см. ниже). Темпом игры
+  она не управляет.
+- Два клампа: `MAX_FRAME_MS = 250` обрезает `dt`, чтобы после сворачивания вкладки не прокрутить
+  пачку минут разом; `MAX_STEPS = 240` — предохранитель на случай, если первый кламп когда-нибудь
+  снимут.
+- `tick()` выходит сразу при `paused || g.over || modal` (сбросив `acc`) — модалка морозит время
+  **самим фактом открытия**, `paused` при этом не трогается.
+- `setSpeed(s)` заодно снимает пузу (`paused = false`); `pause()` только ставит флаг, `timeScale`
+  не сбрасывает — поэтому `MapHUD` возобновляет игру как `setSpeed(game.timeScale || 1)`.
 - `openModal` запоминает `pausedBeforeModal` только на переходе `null → открыто`, так что вторая
   модалка не затирает запомненное значение. `closeModal` восстанавливает пузу лишь `if (!g.over)`.
 - Конец дела ловится внутри тика: `if (g.over && !overHandled) onCaseEnd()`. `onCaseEnd` ставит
@@ -131,8 +154,9 @@ onMount(() => { const id = setInterval(() => game.tick(), 250); return () => cle
   `ResultsModal`. Сбрасывается `overHandled` только в `startCase()` — обработчик идемпотентен.
 
 **Чего нет:** ни одного слушателя `visibilitychange`, `blur`, `beforeunload`, `resize` или
-`matchMedia`. Симуляция продолжает идти в скрытой вкладке (тормозит только троттлинг браузера), и при
-закрытии страницы ничего не сохраняется.
+`matchMedia`. В скрытой вкладке браузер сам замораживает `requestAnimationFrame`, поэтому симуляция
+там **стоит** (раньше, на `setInterval`, она продолжала идти в троттленом режиме). При закрытии
+страницы ничего не сохраняется.
 
 ## Дерево компонентов
 
@@ -146,7 +170,7 @@ App
 └─ IntroModal | SettingsModal | ResultsModal | QuestModal   (ровно одна, по game.modal)
 ```
 
-- **Пропсы принимают только два компонента**: `MapCell` (`cell, far, heat, units, mark, over, zoomed,
+- **Пропсы принимают только два компонента**: `MapCell` (`cell, far, heat, mark, over, zoomed,
   isSearching`) и `Modal` (сниппет `children` + `onbackdrop?`). Все остальные импортируют синглтон
   `game` напрямую — слоя prop-drilling нет.
 - `MapHUD` полностью заменил шапку: полоса состояния жертвы, левая пилюля (время, 🌙 ночью, погода,
@@ -156,8 +180,16 @@ App
   улике (`effMark === 'real'` со стрелкой → `dirArrow`, без стрелки → `◎`, неразмеченная → `•`,
   помеченная мусором — **ничего**). Следы маршрута и жертва добавляются только при `g.over`.
 - `MapCell` рисует слоями: `.ter` (топознак) → `.heat` (инлайновая `opacity = heat * 0.5`) →
-  `.track` (SVG-змейка покрытия) → `.mk` (маркеры) → `.uu` (иконки отрядов) → `.crd` (координата,
-  только при зуме).
+  `.track` (SVG-змейка покрытия) → `.mk` (маркеры) → `.crd` (координата, только при зуме).
+  **Отрядов в клетке нет:** они живут в общем overlay поверх сетки (см. ниже).
+- **Отряды — отдельный слой `.units-overlay` внутри `.gridwrap`**, а не содержимое клетки:
+  иначе иконка прыгала бы из клетки в клетку. `unitFloatPositions(g)` даёт дробные координаты,
+  overlay ставит иконку в `left/top = (x + 0.5) × CELL_PX`, а CSS-переход длительностью
+  `--move-ms` (= `game.stepMs × 0.95`) превращает шаг симуляции в плавное скольжение. Переход
+  обязан укладываться в шаг, иначе на 2×/4× движение начинает дёргаться; та же переменная
+  наследуется в `MapCell` для змейки покрытия. `@media (prefers-reduced-motion: reduce)` его снимает.
+  Отряды, оказавшиеся в одной клетке, `unitFloatPositions` разводит веером — без этого иконки
+  полностью перекрывают друг друга.
 - `QuestModal` — мини-квест первой помощи: открывается, когда `g.quest` не пуст (пропавшего нашли
   живым после ухода медиков), и удерживает игру на паузе до последнего ответа.
 
@@ -215,7 +247,7 @@ App
 - В проекте **две несвязанные палитры**: тёмная токенная для интерфейса и светлая топографическая для
   карты, зашитая литералами в `global.css` (`.t-forest #c8dba8` и т.д.).
 - `global.css` не заскоупен намеренно по двум причинам, и обе помечены комментариями: это общий «язык
-  карты» для `MapGrid` и `MapCell` (`.cell, .t-*, .ter, .heat, .mk, .uu, .crd`), и правила
+  карты» для `MapGrid` и `MapCell` (`.cell, .t-*, .ter, .heat, .mk, .crd`), и правила
   `.modalbox *` должны быть глобальными, потому что контент модалок передаётся в `Modal` сниппетом —
   скоуп родителя до него не достаёт.
 - «Язык панелей» (`.card, .row, .secH, .stTxt, .bar, .clue, .btn, .tabbtn` …) тоже в `global.css`,
@@ -240,7 +272,7 @@ App
 
 | Переход | Что делает |
 |---|---|
-| `beginCase()` | `modal = null; paused = false; ui.speed = 1` — старт дела |
+| `beginCase()` | `modal = null; paused = false; timeScale = 1; acc = 0` — старт дела |
 | `openHelp()` | `introStart = false` + та же `IntroModal` как справка |
 | `onCaseEnd()` | `paused = true`, статистика, `persist()`, `ResultsModal` |
 | `showMap()` / `backToResults()` | осмотр завершённой карты; `paused` остаётся `true` |
@@ -254,10 +286,12 @@ App
 ## Сборка и раздача
 
 - Ноль рантайм-зависимостей; devDeps: svelte 5, vite 5, vitest 2, typescript 5, svelte-check,
-  `@sveltejs/vite-plugin-svelte`, `@tsconfig/svelte`.
-- **`vite.config.ts` задаёт `base: '/rescue-strategy-game/'`.** Поэтому dev и preview открываются по
-  `http://localhost:5173/rescue-strategy-game/` и `:4173/rescue-strategy-game/` — по корню приложение
-  не поднимется, и `dist/index.html` нельзя открыть по `file://`.
+  `@sveltejs/vite-plugin-svelte`, `@tsconfig/svelte`, `@types/node`.
+- **`vite.config.ts` задаёт `base: process.env.VITE_BASE ?? '/'`.** По умолчанию сборка идёт под
+  корень домена (nginx на `game.algorb.ru`, `npm run dev` на `localhost:5173`, preview на `:4173`).
+  Подкаталог включает только GitHub Actions, передавая `VITE_BASE=/rescue-strategy-game/`. По
+  `file://` `dist/index.html` не открывается ни при какой базе.
+  `process.env` в конфиге требует `@types/node` в devDependencies — иначе `npm run check` падает.
 - Конфиг vitest живёт **внутри `vite.config.ts`** (`test: {environment:'node', include:
   ['src/test/**/*.test.ts']}`), отдельного `vitest.config.*` нет.
 - Пути к картинкам считаются двумя разными способами: в CSS — корне-абсолютные `url(/images/…)`

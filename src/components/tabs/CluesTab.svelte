@@ -4,6 +4,11 @@
   import { EXPCOST, EXPREWARD, EXPT, coordName, fmtTimeAt, effMark, dirName, dirArrow } from '../../engine';
 
   const g = $derived(game.g);
+
+  // TabPanel монтирует вкладку заново при каждом переключении, а `in:` играет на
+  // монтировании элемента. Без этого весь список разъезжался бы анимацией при каждом
+  // заходе на вкладку — анимируем только те улики, что пришли уже при открытой вкладке.
+  const known = new Set(game.g.clues.map(c => c.id));
 </script>
 
 {#if !g.clues.length}
@@ -14,7 +19,7 @@
     {@const m = effMark(c)}
     {@const cls = c.verdict === 'real' ? 'vreal' : m === 'real' ? 'mreal' : m === 'junk' ? 'mjunk' : ''}
     {@const canExp = g.buildings.carto >= 1 && !c.exp}
-    <div class="card clue {cls}" in:slide={{ duration: 220 }}>
+    <div class="card clue {cls}" in:slide={{ duration: known.has(c.id) ? 0 : 220 }}>
       <div class="meta">
         {c.noPos ? 'без координат' : 'кв. ' + coordName(c.x, c.y)} · {fmtTimeAt(c.tFound)}{c.noPos ? ' · 🛰️ навигатор сел' : ''}
         {#if c.verdict === 'real'}<span class="vb real">✓ подтверждено</span>

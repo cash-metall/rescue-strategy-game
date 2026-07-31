@@ -18,7 +18,7 @@ public/images/
 
 | Где | Как | Что получается в сборке |
 |---|---|---|
-| CSS (`global.css`) | корне-абсолютный `url(/images/forest.svg?v=2)` | Vite ре-базирует → `/rescue-strategy-game/images/forest.svg?v=2` |
+| CSS (`global.css`) | корне-абсолютный `url(/images/forest.svg?v=2)` | Vite ре-базирует под `base`: по умолчанию так и остаётся `/images/…`, при сборке для Pages станет `/rescue-strategy-game/images/…` |
 | Компоненты (`MapCell`) | `const IMG = import.meta.env.BASE_URL + 'images/'` | вычисляется в рантайме от `base` |
 
 Кэш-бастинг `?v=2` стоит у `forest`, `dense` и `hills`; у `meadow` и `marsh` его нет.
@@ -60,10 +60,12 @@ public/images/
 монохром: юниты, постройки и учебный центр `#e6e9d8`; палатка `#e8a33d` на `#20160a`; булавка
 `#e5675a`; след `#f0c063`; жертва `#8fca74`.
 
-- **Юниты** — путь в `TYPES[type].svg`. `unitPositions()` (`engine/access.ts`) — **чистая функция**:
-  отдаёт только `Map<'x,y' → UnitType[]>` и никакой разметки не создаёт. `<img>` рисует
-  `MapCell.svelte` в слое `.uu` (несколько отрядов в клетке — стопкой), стилизация селектором
-  `.cell .uu img`.
+- **Юниты** — путь в `TYPES[type].svg`. `unitFloatPositions()` (`engine/access.ts`) — **чистая
+  функция**: отдаёт `{id, type, x, y}[]` с дробными координатами клетки и никакой разметки не
+  создаёт. Отряды в одной клетке она разводит веером (`FAN_R = 0.24` клетки), иначе иконки
+  накладываются друг на друга. `<img class="uico">` рисует `MapGrid.svelte` в общем слое
+  `.units-overlay` поверх сетки — не внутри клетки, иначе иконка прыгала бы по клеткам вместо
+  плавного скольжения.
 - **Маркеры карты** рисует тот же `MapCell.svelte` в слое `.mk`: база → `hq/tent.svg` (путь зашит
   строкой в компоненте), ТПК → `markers/pin.svg` с классами `pin pulse`, след пропавшего →
   `markers/trail.svg` (тёплый золотой, чтобы отличаться от кремовых топознаков), жертва →
@@ -86,7 +88,7 @@ public/images/
 - **Сетка и рамка выбранной клетки** — отдельный SVG-слой `.lines` в `MapGrid.svelte` с
   `vector-effect: non-scaling-stroke`. У `.cell` намеренно нет ни `border`, ни `outline`, иначе
   толщина линий менялась бы с зумом (комментарий в `global.css`).
-- **Слои клетки** помимо `.ter`/`.mk`/`.uu`: `.heat` (тепловая карта, инлайновая
+- **Слои клетки** помимо `.ter`/`.mk`: `.heat` (тепловая карта, инлайновая
   `opacity = heat × 0.5`) и `.crd` (координата `A1…L12`, только при близком зуме; её размеры делятся
   на инлайновую переменную `--s`, чтобы подпись не росла вместе с картой).
 
@@ -106,8 +108,8 @@ SVG построек уже лежат в `public/images/hq/` — подстав
    - маркер → добавить `<img>` в `src/components/MapCell.svelte`;
    - местность → правило `.t-<terrain> .ter { background-image: url(/images/<file>.svg) }` в
      `src/styles/global.css` (легенды, куда раньше нужно было добавлять образец, больше нет).
-3. Проверить рендер скриншотом через headless Chrome — **по базовому пути**
-   `http://localhost:4173/rescue-strategy-game/`, см. [testing.md](testing.md).
+3. Проверить рендер скриншотом через headless Chrome — `http://localhost:4173/`,
+   см. [testing.md](testing.md).
 
 ## Проверка иконок без игры
 

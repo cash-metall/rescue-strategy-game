@@ -3,6 +3,7 @@ import {
   newGame, simMinute, dispatchUnit, addUnit, actSend, actAbandon, actTrain, actBuild,
   findPath, passable, planTrip, sendBlock, cellAt, coverRate, detectEff, searchEst,
   available, isBusy, freeWinds, windCapacity, incidentPool, rollEvent,
+  forceReturn, windMinutes, unitCell, targetable,
   setRng, resetRng, DEFAULT_CAMPAIGN, LVL, EVENT_CHANCE, RECON_MIN, WIND_PASS,
   type Game, type Fx, type Unit, type UnitType,
 } from '../engine';
@@ -105,6 +106,62 @@ describe('«Ветер» как транспорт', () => {
     runUntil(g, () => foot.status !== 'travel');
     // ехал, а не шёл: усталости почти не набрал
     expect(foot.fatigue - fatAtStart).toBeLessThan(3);
+  });
+
+  it('забирает группу с обратной дороги: та идёт пешком, машина не приезжает раньше', () => {
+    const g = fresh();
+    const w = hire(g, 'wind');
+    const foot = g.units.find(u => u.type === 'foot')!;
+    // дальняя клетка, куда и уазик доедет, и группа дойдёт пешком
+    const cell = g.map.flat()
+      .filter(c => targetable(c) && passable(c.terrain, 'foot', 1) && windMinutes(g, w, g.hq, c) != null)
+      .sort((a, b) => Math.hypot(b.x - g.hq.x, b.y - g.hq.y) - Math.hypot(a.x - g.hq.x, a.y - g.hq.y))[0];
+
+    dispatchUnit(g, foot, cell, null);          // ушла пешком, без машины
+    foot.mission!.event = null;                 // инциденты в этом тесте не проверяем
+    runUntil(g, () => foot.status === 'search');
+    forceReturn(g, foot, 'recall', noop);
+
+    expect(foot.mission!.carrier).toBe(w.id);   // машина выехала навстречу
+    expect(foot.mission!.aboard).toBe(false);
+    expect(w.status).toBe('travel');
+
+    const fromCell = unitCell(g, foot);
+    const fat0 = foot.fatigue;
+    expect(runUntil(g, () => !!foot.mission?.aboard)).toBe(true);
+
+    // пока «Ветер» ехал, группа шла сама: сдвинулась к штабу и подустала
+    expect(unitCell(g, foot)).not.toEqual(fromCell);
+    expect(foot.fatigue).toBeGreaterThan(fat0);
+    // подобрали здесь и сейчас, время прибытия общее с машиной
+    expect(foot.phaseStart).toBe(g.t);
+    expect(foot.phaseEnd).toBe(w.phaseEnd);
+
+    const fatAboard = foot.fatigue;
+    runUntil(g, () => w.status === 'idle');
+    expect(foot.status).toBe('idle');           // машина не бросила пассажира в поле
+    expect(foot.fatigue).toBeLessThanOrEqual(fatAboard);   // ехала, а не шла
+  });
+
+  it('если группа дошла до лагеря сама, «Ветер» возвращается порожняком', () => {
+    const g = fresh();
+    const w = hire(g, 'wind');
+    const foot = g.units.find(u => u.type === 'foot')!;
+    const cell = g.map.flat()
+      .filter(c => targetable(c) && passable(c.terrain, 'foot', 1) && windMinutes(g, w, g.hq, c) != null)
+      .sort((a, b) => Math.hypot(b.x - g.hq.x, b.y - g.hq.y) - Math.hypot(a.x - g.hq.x, a.y - g.hq.y))[0];
+
+    dispatchUnit(g, foot, cell, null);
+    foot.mission!.event = null;
+    runUntil(g, () => foot.status === 'search');
+    forceReturn(g, foot, 'recall', noop);
+    expect(w.passengers).toContain(foot.id);
+
+    foot.phaseEnd = g.t;                        // группа успевает дойти сама
+    expect(runUntil(g, () => foot.status === 'idle')).toBe(true);
+    expect(runUntil(g, () => w.status === 'idle')).toBe(true);
+    expect(w.passengers).toEqual([]);
+    expect(w.mission).toBeNull();
   });
 
   it('вместимость растёт с уровнем и наследуется на ур. 3', () => {
