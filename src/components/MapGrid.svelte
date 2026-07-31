@@ -3,15 +3,19 @@
   import { game } from '../state/game.svelte';
   import MapCell from './MapCell.svelte';
   import {
-    unitPositions, inRange, targetable, effMark, dirArrow, COLS, W, H,
+    unitFloatPositions, inRange, targetable, effMark, dirArrow, COLS, W, H, TYPES,
   } from '../engine';
 
   const XS = [...Array(W).keys()];
   const YS = [...Array(H).keys()];
 
-  const g    = $derived(game.g);
-  const upos = $derived(unitPositions(g));
-  const heat = $derived(game.heat);
+  const IMG = import.meta.env.BASE_URL + 'images/';
+
+  const g          = $derived(game.g);
+  const unitFloats = $derived(unitFloatPositions(g));
+  const heat       = $derived(game.heat);
+  // Длительность перехода движения = шагу симуляции (чуть короче, чтобы всегда успеть завершиться).
+  const moveMs     = $derived(Math.round(game.stepMs * 0.95));
 
   // Квадраты, которые прямо сейчас прочёсываются (status === 'search')
   const searchingCells = $derived.by(() => {
@@ -346,7 +350,7 @@
 <div class="mapwrap" bind:this={wrapEl}>
 
   <!-- Трансформируемая сетка -->
-  <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})" style:--s={scale}>
+  <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})" style:--s={scale} style:--move-ms="{moveMs}ms">
     <div class="grid" class:zoomed>
       {#each YS as y (y)}
         {#each XS as x (x)}
@@ -355,13 +359,27 @@
             {cell}
             far={!inRange(g, cell) && targetable(cell)}
             heat={heat ? heat[y][x] : 0}
-            units={upos.get(x + ',' + y)}
             mark={marks.get(x + ',' + y)}
             over={!!g.over}
             {zoomed}
             isSearching={searchingCells.has(x + ',' + y)}
           />
         {/each}
+      {/each}
+    </div>
+
+    <!-- Плавные иконки отрядов: абсолютный overlay в пространстве сетки (масштабируется вместе с gridwrap).
+         Длительность перехода = шагу симуляции (game.stepMs): позиция обновляется раз в шаг,
+         поэтому анимация должна занимать ровно этот интервал — иначе на 2×/4× движение лагает. -->
+    <div class="units-overlay" aria-hidden="true">
+      {#each unitFloats as u (u.id)}
+        <img
+          class="uico"
+          src="{IMG}{TYPES[u.type].svg}"
+          style:left="{(u.x + 0.5) * CELL_PX}px"
+          style:top="{(u.y + 0.5) * CELL_PX}px"
+          alt={u.type}
+        />
       {/each}
     </div>
 
@@ -478,4 +496,26 @@
 
   .clbl.ccol { transform: translateX(-50%); }
   .clbl.crow { transform: translateY(-50%); min-width: 18px; text-align: center; }
+
+  /* Плавное движение отрядов по карте */
+  .units-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .uico {
+    position: absolute;
+    width: 14px; height: 14px;
+    /* центрируем иконку на позиции */
+    translate: -50% -50%;
+    filter: invert(1) drop-shadow(0 0 2px rgba(255,255,255,.9));
+    /* длительность перехода задаётся из JS под шаг симуляции (--move-ms) */
+    transition: left var(--move-ms, 490ms) linear, top var(--move-ms, 490ms) linear;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .uico { transition: none; }
+  }
 </style>

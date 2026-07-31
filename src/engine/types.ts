@@ -176,7 +176,6 @@ export interface UiState {
   sel: Pt | null;
   selUnits: Set<number>;
   heat: boolean;
-  speed: number;
 }
 
 export interface LogLine { t: number; txt: string; cls?: string; }

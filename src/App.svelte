@@ -14,8 +14,17 @@
   import QuestModal from './components/QuestModal.svelte';
 
   onMount(() => {
-    const id = setInterval(() => game.tick(), 250);
-    return () => clearInterval(id);
+    // Игровое время течёт по реальному прошедшему времени (game.tick сам копит минуты).
+    // rAF даёт плавный кадр; при скрытой вкладке он замирает — dt клампится внутри tick.
+    let raf = 0;
+    let last = performance.now();
+    const frame = (now: number) => {
+      game.tick(now - last);
+      last = now;
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
   });
 
   const modal     = $derived(game.modal);

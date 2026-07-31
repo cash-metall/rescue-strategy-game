@@ -12,7 +12,7 @@
   const closeSettings = () => { settingsOpen = false; };
 
   function togglePause() {
-    if (game.paused) game.setSpeed(g.ui.speed || 1);
+    if (game.paused) game.setSpeed(game.timeScale || 1);
     else game.pause();
   }
 </script>
@@ -55,9 +55,9 @@
     <!-- Скорость -->
     <div class="s-row">
       <button class="sbtn" class:on={game.paused} onclick={togglePause} title="Пауза/Продолжить">⏸</button>
-      <button class="sbtn" class:on={!game.paused && g.ui.speed === 1} onclick={() => game.setSpeed(1)}>1×</button>
-      <button class="sbtn" class:on={!game.paused && g.ui.speed === 2} onclick={() => game.setSpeed(2)}>2×</button>
-      <button class="sbtn" class:on={!game.paused && g.ui.speed === 4} onclick={() => game.setSpeed(4)}>4×</button>
+      <button class="sbtn" class:on={!game.paused && game.timeScale === 1} onclick={() => game.setSpeed(1)}>1×</button>
+      <button class="sbtn" class:on={!game.paused && game.timeScale === 2} onclick={() => game.setSpeed(2)}>2×</button>
+      <button class="sbtn" class:on={!game.paused && game.timeScale === 4} onclick={() => game.setSpeed(4)}>4×</button>
     </div>
     <!-- Тепловая карта -->
     <button class="smitem" class:on={g.ui.heat} disabled={!canHeat}

@@ -155,27 +155,80 @@ export function sendBlock(g: Game, u: Unit, cell: Cell): string | null {
   return null;
 }
 
-// Интерполированные позиции отрядов на карте (для отрисовки). Ключ "x,y" → список типов юнитов.
-export function unitPositions(g: Game): Map<string, UnitType[]> {
-  const pos = new Map<string, UnitType[]>();
+/** Плавная интерполяция позиции вдоль маршрута (дробные координаты клетки).
+ *  reverse=true — обратный ход (return), p идёт 0→1, позиция route[end]→route[0]. */
+function routeFloat(route: Pt[], p: number, reverse: boolean): { x: number; y: number } {
+  const n = route.length;
+  if (n === 1) return { x: route[0].x, y: route[0].y };
+  const frac = (reverse ? 1 - p : p) * (n - 1);
+  // Граничные проверки ОБЯЗАТЕЛЬНЫ: при frac=n-1 floor=n-1, но i зажат в n-2 → даст route[n-2].
+  if (frac <= 0)     return { x: route[0].x,     y: route[0].y };
+  if (frac >= n - 1) return { x: route[n - 1].x, y: route[n - 1].y };
+  const i = Math.floor(frac);
+  const t = frac - i;
+  return {
+    x: route[i].x + (route[i + 1].x - route[i].x) * t,
+    y: route[i].y + (route[i + 1].y - route[i].y) * t,
+  };
+}
+
+export interface UnitFloat { id: number; type: UnitType; x: number; y: number; }
+
+/** Дробные (float) координаты клетки для каждого отряда в поле.
+ *  Используется рендером для плавного движения по карте. */
+export function unitFloatPositions(g: Game): UnitFloat[] {
+  const result: UnitFloat[] = [];
   for (const u of g.units) {
     if (!u.mission) continue;
     const m = u.mission;
     const p = clamp((g.t - u.phaseStart) / Math.max(1, u.phaseEnd - u.phaseStart), 0, 1);
     let x: number, y: number;
+
     if (u.status === 'travel') {
-      const r = m.route;
-      if (r && r.length > 1) { const i = Math.min(r.length - 1, Math.floor(p * (r.length - 1))); x = r[i].x; y = r[i].y; }
-      else { x = g.hq.x + (m.x - g.hq.x) * p; y = g.hq.y + (m.y - g.hq.y) * p; }
-    } else if (u.status === 'search') { x = m.x; y = m.y; }
-    else if (u.status === 'return') {
-      const r = m.route;
-      if (r && r.length > 1) { const i = Math.max(0, Math.min(r.length - 1, Math.round((1 - p) * (r.length - 1)))); x = r[i].x; y = r[i].y; }
-      else { const s = m.retFrom || m; x = s.x + (g.hq.x - s.x) * p; y = s.y + (g.hq.y - s.y) * p; }
+      if (m.carrier != null) {
+        // Пассажир в машине: позиция = позиция Ветра, пока он едет туда.
+        const car = g.units.find(w => w.id === m.carrier);
+        if (car?.status === 'travel' && car.mission?.route) {
+          const cp = clamp((g.t - car.phaseStart) / Math.max(1, car.phaseEnd - car.phaseStart), 0, 1);
+          const pos = routeFloat(car.mission.route, cp, false);
+          x = pos.x; y = pos.y;
+        } else {
+          // Ветер высадил — идём пешком по своему маршруту.
+          const r = m.route;
+          if (r && r.length > 1) { const pos = routeFloat(r, p, false); x = pos.x; y = pos.y; }
+          else { x = g.hq.x + (m.x - g.hq.x) * p; y = g.hq.y + (m.y - g.hq.y) * p; }
+        }
+      } else {
+        const r = m.route;
+        if (r && r.length > 1) { const pos = routeFloat(r, p, false); x = pos.x; y = pos.y; }
+        else { x = g.hq.x + (m.x - g.hq.x) * p; y = g.hq.y + (m.y - g.hq.y) * p; }
+      }
+    } else if (u.status === 'search') {
+      x = m.x; y = m.y;
+    } else if (u.status === 'return') {
+      if (m.carrier != null && g.t < m.pausedUntil) {
+        // Ждём Ветра — стоим на месте.
+        x = m.x; y = m.y;
+      } else if (m.carrier != null) {
+        // Едем обратно с Ветром.
+        const car = g.units.find(w => w.id === m.carrier);
+        if (car?.status === 'return' && car.mission?.route) {
+          const cp = clamp((g.t - car.phaseStart) / Math.max(1, car.phaseEnd - car.phaseStart), 0, 1);
+          const pos = routeFloat(car.mission.route, cp, true);
+          x = pos.x; y = pos.y;
+        } else {
+          const r = m.route;
+          if (r && r.length > 1) { const pos = routeFloat(r, p, true); x = pos.x; y = pos.y; }
+          else { const s = m.retFrom || m; x = s.x + (g.hq.x - s.x) * p; y = s.y + (g.hq.y - s.y) * p; }
+        }
+      } else {
+        const r = m.route;
+        if (r && r.length > 1) { const pos = routeFloat(r, p, true); x = pos.x; y = pos.y; }
+        else { const s = m.retFrom || m; x = s.x + (g.hq.x - s.x) * p; y = s.y + (g.hq.y - s.y) * p; }
+      }
     } else continue;
-    const k = Math.round(clamp(x, 0, W - 1)) + ',' + Math.round(clamp(y, 0, H - 1));
-    const arr = pos.get(k);
-    if (arr) arr.push(u.type); else pos.set(k, [u.type]);
+
+    result.push({ id: u.id, type: u.type, x: clamp(x, 0, W - 1), y: clamp(y, 0, H - 1) });
   }
-  return pos;
+  return result;
 }

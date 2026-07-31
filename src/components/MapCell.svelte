@@ -1,6 +1,6 @@
 <script lang="ts">
   import { game } from '../state/game.svelte';
-  import { TYPES, TERR, coordName, targetable, type Cell, type UnitType } from '../engine';
+  import { TERR, coordName, targetable, type Cell } from '../engine';
 
   const IMG = import.meta.env.BASE_URL + 'images/';
 
@@ -10,9 +10,9 @@
     arrows: { cls: string; ch: string }[];
   }
 
-  let { cell, far, heat, units, mark, over, zoomed, isSearching }: {
+  let { cell, far, heat, mark, over, zoomed, isSearching }: {
     cell: Cell; far: boolean; heat: number;
-    units?: UnitType[]; mark?: Mark; over: boolean; zoomed: boolean;
+    mark?: Mark; over: boolean; zoomed: boolean;
     isSearching: boolean;
   } = $props();
 
@@ -63,9 +63,6 @@
     {#if mark?.sight}<span class="sight" class:hum={mark.sight === 'human'}>{mark.sight === 'human' ? '🚨' : '❓'}</span>{/if}
     {#if mark}{#each mark.arrows as a, i (i)}<span class={a.cls}>{a.ch}</span>{/each}{/if}
   </div>
-  <div class="uu">
-    {#if units}{#each units as t, i (i)}<img src="{IMG}{TYPES[t].svg}" alt={t} />{/each}{/if}
-  </div>
   {#if zoomed}<span class="crd">{coordName(cell.x, cell.y)}</span>{/if}
 </div>
 
@@ -100,7 +97,9 @@
     stroke-linejoin: round;
     /* пиксельная ширина линии не зависит от масштаба карты */
     vector-effect: non-scaling-stroke;
-    transition: stroke-dashoffset 0.35s linear;
+    /* покрытие обновляется раз в шаг симуляции — переход длится ровно шаг (--move-ms),
+       наследуется от .gridwrap; иначе трек рисуется рывками */
+    transition: stroke-dashoffset var(--move-ms, 490ms) linear;
   }
 
   /* Активный поиск: более яркий цвет + пульс */

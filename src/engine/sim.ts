@@ -167,9 +167,22 @@ function windArrived(g: Game, u: Unit, emit: Sink): void {
       }
     }
   }
+  // Реальное время обратной дороги от ячейки до штаба (игнорирует m.travel,
+  // который мог быть перезаписан логикой второго пассажира).
+  const directBack = windMinutes(g, u, { x: m.x, y: m.y }, g.hq);
+  const returnMin = Math.max(1, Math.round((directBack ?? m.travel) * lampSlow(g, u)));
+  // Подбор ждущих пассажиров: привязать их прибытие к реальному времени Ветра.
+  for (const pid of u.passengers) {
+    const pass = g.units.find(p => p.id === pid);
+    if (pass?.status === 'return' && pass.mission?.x === m.x && pass.mission?.y === m.y) {
+      pass.phaseEnd = g.t + returnMin;
+      pass.mission.pausedUntil = 0;
+      pushLog(g, `🚙 ${u.name} ${gv(u, 'забрала', 'забрал')} в кв. ${coordName(m.x, m.y)}: ${pass.name}`);
+    }
+  }
   u.status = 'return';
   u.phaseStart = g.t;
-  u.phaseEnd = g.t + Math.max(1, Math.round((m.travel) * lampSlow(g, u)));
+  u.phaseEnd = g.t + returnMin;
   m.retFrom = { x: m.x, y: m.y };
 }
 
@@ -356,8 +369,11 @@ export function forceReturn(g: Game, u: Unit, reason: ReturnReason, emit: Sink):
   } else {
     m.carrier = null;
   }
-  if (u.fatigue >= 100) ret = Math.round(ret * 1.3);
-  ret = Math.max(1, Math.round(ret * lampSlow(g, u)));
+  // Усталость и темп фонаря — только при пешем возврате: пассажир Ветра едет, не идёт.
+  if (!m.carrier) {
+    if (u.fatigue >= 100) ret = Math.round(ret * 1.3);
+    ret = Math.max(1, Math.round(ret * lampSlow(g, u)));
+  }
   u.status = 'return';
   u.phaseStart = g.t; u.phaseEnd = g.t + ret;
 
@@ -388,6 +404,7 @@ function tryPickup(g: Game, u: Unit, _emit: Sink): number | null {
       gps: true, radio: true, lampOut: false,
     };
     m.carrier = w.id;
+    m.pausedUntil = g.t + there;  // группа ждёт Ветра в ячейке, не уходит сама
     pushLog(g, `🚙 ${w.name} выехал за группой в кв. ${coordName(m.x, m.y)} (${u.name})`);
 
     // Опытный водитель (ур. 2+) заодно подберёт вторую группу, если крюк невелик.

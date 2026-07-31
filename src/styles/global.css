@@ -76,9 +76,6 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 .cell .mk img { width: 22px; height: 22px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
 .cell .mk img.pin { width: 18px; height: 19px; }
 .cell .mk img.trail { width: 19px; height: 19px; }
-.cell .uu { position: absolute; right: 1px; top: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: 36px; pointer-events: none; }
-/* Юниты — инвертированы (SVG светлые, рисовались под тёмный фон) + белый ореол */
-.cell .uu img { width: 14px; height: 14px; filter: invert(1) drop-shadow(0 0 2px rgba(255,255,255,.9)); }
 
 /* Координата ячейки при близком зуме (A1, B3 …) */
 .cell .crd {

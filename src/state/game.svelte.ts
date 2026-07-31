@@ -22,6 +22,14 @@ function seed(camp: Campaign): Game {
 // Модалки — эфемерное состояние UI (пауза при открытии).
 export type ModalKind = 'intro' | 'settings' | 'results' | 'quest' | null;
 
+// ── Течение времени ──────────────────────────────────────────────────────────
+// Игровое время отвязано от частоты кадров: цикл вызывает tick(dt) каждый кадр,
+// накопитель копит игровые минуты по реальному прошедшему времени × timeScale.
+// Скорость задаётся ТОЛЬКО множителем timeScale — период кадра ни на что не влияет.
+const GAME_MIN_PER_SEC = 2;   // игровых минут в 1 реальную секунду при timeScale = 1
+const MAX_FRAME_MS = 250;     // клампим dt: после сворачивания вкладки не гнать пачку минут разом
+const MAX_STEPS = 240;        // предохранитель от «спирали смерти» в одном кадре
+
 // Исход дела → категория статистики кампании.
 const CAT: Record<Outcome, 'alive' | 'dead' | 'missing'> = {
   alive: 'alive', 'alive-late': 'alive', dead: 'dead', abandoned: 'missing',
@@ -36,8 +44,14 @@ class GameStore {
   introStart = $state(true);           // интро открыто как начало дела (true) или как справка (false)
   sheet = $state<'none' | 'cell' | 'tabs'>('none'); // мобильные bottom-sheet (на десктопе игнорируется)
   resultsFab = $state(false);          // плавающая кнопка «вернуться к итогам»
+  timeScale = $state(1);               // множитель скорости: 1× / 2× / 4× (эфемерно, не в сейве)
   private pausedBeforeModal = false;
   private overHandled = false;
+  private acc = 0;                     // накопленные игровые минуты (дробные)
+
+  // Реальных миллисекунд на один шаг simMinute при текущей скорости.
+  // Нужен рендеру: длительность CSS-перехода движения = шагу, иначе анимация лагает.
+  get stepMs(): number { return 1000 / (GAME_MIN_PER_SEC * this.timeScale); }
 
   heat = $derived(this.g.ui.heat && this.g.buildings.carto >= 1 ? heatScores(this.g) : null);
 
@@ -50,12 +64,17 @@ class GameStore {
     this.campaign = saveCampaign(this.kv, this.g, this.campaign.stats);
   }
 
-  tick(): void {
-    if (this.paused || this.g.over || this.modal) return;
-    const speed = this.g.ui.speed;
-    for (let i = 0; i < speed; i++) {
+  /** Вызывается циклом кадров с реальным dt (мс). Копит игровое время и
+   *  прокручивает симуляцию фиксированными шагами по одной минуте. */
+  tick(dtMs: number): void {
+    if (this.paused || this.g.over || this.modal) { this.acc = 0; return; }
+    this.acc += (Math.min(dtMs, MAX_FRAME_MS) / 1000) * GAME_MIN_PER_SEC * this.timeScale;
+    let steps = 0;
+    while (this.acc >= 1 && steps < MAX_STEPS) {
+      this.acc -= 1;
       simMinute(this.g, this.sink);
-      if (this.g.over || this.g.quest) break;
+      steps++;
+      if (this.g.over || this.g.quest) { this.acc = 0; break; }
     }
     // найден живым после ухода медиков — сначала мини-квест первой помощи
     if (this.g.quest && this.modal !== 'quest') { this.paused = true; this.openModal('quest'); return; }
@@ -71,7 +90,7 @@ class GameStore {
   }
 
   // --- управление временем ---
-  setSpeed(s: number): void { this.g.ui.speed = s; this.paused = false; }
+  setSpeed(s: number): void { this.timeScale = s; this.paused = false; }
   pause(): void { this.paused = true; }
 
   // --- жизненный цикл дела ---
@@ -100,7 +119,7 @@ class GameStore {
     if (!this.g.over) this.paused = this.pausedBeforeModal;
   }
   // «Начать операцию» из интро — снять паузу.
-  beginCase(): void { this.modal = null; this.paused = false; this.g.ui.speed = 1; }
+  beginCase(): void { this.modal = null; this.paused = false; this.timeScale = 1; this.acc = 0; }
   showMap(): void { this.modal = null; this.resultsFab = true; }
   backToResults(): void { this.resultsFab = false; this.openModal('results'); }
 
