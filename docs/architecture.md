@@ -64,14 +64,15 @@ HTML; форматирует их `LogTab`).
 `cellAt, clueById, unitById, effMark, hourOf, isNight, activeMissions, missionSlots, inRange,
 targetable, fatEff, detectEff, coverRate, searchEst, restRate, available, isBusy, needsRest,
 freeWinds, windCapacity, windMinutes, planTrip, sendBlock, readsDir, lvlName, awayCount,
-unitFloat, unitCell, unitFloatPositions, phaseProgress, homeTrack, travelTime`. Игра идёт **первым
+unitFloat, unitCell, unitFloatPositions, unitRoutes, fanOffset, phaseProgress, homeTrack,
+travelTime`. Игра идёт **первым
 аргументом** там, где нужны погода, ночь или `g.hq` — например `coverRate(g, u, cell)` и
 `planTrip(g, u, cell, wind)`.
 
 Отдельные модули: `path.ts` — Дейкстра по 8 направлениям с ценой клетки из `PATHCOST` и
 проходимостью `WIND_PASS`; `track.ts` — траектории (`Track = {pts, ts}`, `buildTrack`, `joinTracks`,
-`trackPos`, `trackEnd`, `withStart`): геометрия пути плюс разметка по времени, по которой рендер берёт
-позицию в любой дробный момент; `events.ts` — бросок события на задачу и применение последствий
+`trackPos`, `trackSplit`, `trackEnd`, `withStart`): геометрия пути плюс разметка по времени, по которой
+рендер берёт позицию в любой дробный момент, а `trackSplit` делит путь на «пройдено» и «осталось»; `events.ts` — бросок события на задачу и применение последствий
 (инциденты передают `pushLog` и колбэк снятия с задачи параметрами, чтобы не заводить циклический
 импорт с `sim.ts`).
 
@@ -204,6 +205,14 @@ App
   тех, кто прямо сейчас в фазе `search` с живым навигатором, и доводит его внутри минуты тем же
   `coverRate`, которым покрытие копит движок. Осмотр кончается по `swept >= 100`, **а не по таймеру
   фазы**, поэтому только так змейка догорает ровно к уходу группы.
+- **Маршруты — слой `.routes` (SVG, `z-index: 2`)**: под иконками отрядов и сеткой, но поверх
+  содержимого клеток. Пути даёт `unitRoutes(g, tNow)` в координатах клеток — компонент только
+  переводит точки в пиксели. «Осталось» рисуется сплошной `--amber` с тёмным гало (янтарный на
+  пергаменте иначе вымывается), «пройдено» — тише и пунктиром, на конце кольцо целевого квадрата.
+  Линия сдвинута тем же `fanOffset(u.id)`, что и иконка, поэтому **отряд едет ровно по своей линии**,
+  а два отряда на одной дороге дают две параллельные (тест в `motion.test.ts`).
+  Пунктир здесь — **текстура**, а не доля пути: из-за `non-scaling-stroke` он живёт в экранных
+  пикселях, и это как раз нужно (в отличие от змейки покрытия, где дэшем нельзя мерить проценты).
 - **Отряды — отдельный слой `.units-overlay` внутри `.gridwrap`**, а не содержимое клетки:
   иначе иконка прыгала бы из клетки в клетку. `unitFloatPositions(g, game.tNow)` даёт дробные
   координаты **на текущий кадр**, overlay ставит иконку в `transform: translate(...)` — transform,

@@ -7,9 +7,9 @@
 // стало утверждением о движке, которое проверяется в node.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
-  newGame, simMinute, dispatchUnit, addUnit, forceReturn, unitFloat, unitFloatPositions,
-  planTrip, cellAt, coverRate, targetable, available, freeWinds, windMinutes, passable,
-  trackPos, trackEnd, joinTracks, lineTrack,
+  newGame, simMinute, dispatchUnit, addUnit, forceReturn, actAbandon, unitFloat, unitFloatPositions,
+  unitRoutes, planTrip, cellAt, coverRate, targetable, available, freeWinds, windMinutes, passable,
+  trackPos, trackEnd, trackSplit, buildTrack, joinTracks, lineTrack,
   setRng, resetRng, DEFAULT_CAMPAIGN, W, H,
   type Game, type Fx, type Unit, type UnitType, type Pt, type MissionEvent,
 } from '../engine';
@@ -256,6 +256,73 @@ describe('непрерывность при смене фазы', () => {
       expect(d(at(g, u, g.t + 0.5), stopped)).toBeLessThan(0.5);   // сидит в той же машине
     }
   });
+});
+
+describe('линия маршрута', () => {
+  it('trackSplit: границы и общий стык', () => {
+    const tr = buildTrack(fresh(), [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }], 'foot');
+    const at0 = trackSplit(tr, 0);
+    expect(at0.done.length).toBeLessThan(2);            // рисовать пройденное нечем
+    expect(at0.left).toHaveLength(3);
+    const at1 = trackSplit(tr, 1);
+    expect(at1.done).toHaveLength(3);
+    expect(at1.left.length).toBeLessThan(2);
+    // стык принадлежит обеим частям и равен позиции отряда
+    const mid = trackSplit(tr, 0.4);
+    expect(d(mid.done[mid.done.length - 1], mid.left[0])).toBeLessThan(1e-9);
+    expect(d(mid.left[0], trackPos(tr, 0.4))).toBeLessThan(1e-9);
+  });
+
+  it('линия есть только у тех, кто в дороге, и гаснет с концом дела', () => {
+    const g = fresh();
+    const u = g.units[0];
+    expect(unitRoutes(g)).toHaveLength(0);              // в лагере — нечего рисовать
+    dispatchUnit(g, u, farCell(g));
+    u.mission!.event = null;
+    expect(unitRoutes(g).map(r => r.id)).toEqual([u.id]);
+    expect(unitRoutes(g)[0].status).toBe('travel');
+
+    runUntil(g, () => u.status === 'search');
+    expect(unitRoutes(g)).toHaveLength(0);              // стоит в квадрате — линии нет
+
+    forceReturn(g, u, 'recall', noop);
+    expect(unitRoutes(g)[0].status).toBe('return');
+
+    actAbandon(g, noop);                                 // дело закончено
+    expect(unitRoutes(g)).toHaveLength(0);
+  });
+
+  it('иконка отряда всегда стоит на стыке своей линии', () => {
+    // Это и есть смысл того, что линию сдвигает тот же fanOffset, что и иконку.
+    const g = fresh();
+    g.buildings.radio = 3;
+    for (const t of ['dog', 'drone', 'wind'] as UnitType[]) hire(g, t);
+    let checks = 0;
+
+    for (let minute = 0; minute < 600 && !g.over && !g.quest; minute++) {
+      for (const u of g.units) {
+        if (u.type === 'wind' || !available(g, u) || u.fatigue > 40) continue;
+        const cells = g.map.flat().filter(c => targetable(c) && Math.hypot(c.x - g.hq.x, c.y - g.hq.y) > 1);
+        const cell = cells[(minute * 5 + u.id * 11) % cells.length];
+        if (u.type === 'drone' && cell.terrain === 'dense') continue;
+        dispatchUnit(g, u, cell, u.type === 'foot' || u.type === 'dog' ? (freeWinds(g)[0] ?? null) : null);
+      }
+      simMinute(g, noop);
+
+      for (const s of [0, 0.3, 0.7]) {
+        const tNow = g.t + s;
+        const pos = new Map(unitFloatPositions(g, tNow).map(p => [p.id, p]));
+        for (const r of unitRoutes(g, tNow)) {
+          const cut = r.left.length ? r.left[0] : r.done[r.done.length - 1];
+          const icon = pos.get(r.id)!;
+          expect(icon, `у отряда ${r.id} есть линия, но нет иконки`).toBeTruthy();
+          expect(d(cut, icon), `отряд ${r.id} едет мимо своей линии`).toBeLessThan(1e-9);
+          checks++;
+        }
+      }
+    }
+    expect(checks).toBeGreaterThan(500);
+  }, 30000);
 });
 
 describe('полный прогон: ни одного телепорта', () => {

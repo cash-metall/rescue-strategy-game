@@ -6,7 +6,7 @@ import {
 } from './constants';
 import { findPath, moverOf, passable } from './path';
 import {
-  type Track, buildTrack, joinTracks, lineTrack, trackEnd, trackPos, withStart,
+  type Track, buildTrack, joinTracks, lineTrack, trackEnd, trackPos, trackSplit, withStart,
 } from './track';
 
 export const cellAt = (g: Game, x: number, y: number): Cell => g.map[y][x];
@@ -227,12 +227,23 @@ const FAN_R  = 0.22;          // радиус разброса иконок вн
 const GOLDEN = 2.39996323;    // золотой угол: соседние id расходятся по разным сторонам
 
 /**
- * Постоянное смещение иконки внутри клетки — функция ТОЛЬКО от номера отряда.
+ * Постоянное смещение отряда внутри клетки — функция ТОЛЬКО от его номера.
  * Зависеть от соседей по клетке нельзя: у движущегося отряда состав клетки меняется
  * на каждой границе, и смещение (а с ним и иконки всех соседей) прыгало бы туда-сюда.
+ *
+ * Тем же смещением сдвигается и линия маршрута (`unitRoutes`) — поэтому иконка едет
+ * ровно по своей линии, а два отряда на одной дороге дают две параллельные.
  */
-const fanX = (id: number): number => Math.cos(id * GOLDEN) * FAN_R;
-const fanY = (id: number): number => Math.sin(id * GOLDEN) * FAN_R;
+export const fanOffset = (id: number): Pt => ({
+  x: Math.cos(id * GOLDEN) * FAN_R,
+  y: Math.sin(id * GOLDEN) * FAN_R,
+});
+
+/** Позиция с учётом веера, зажатая в карту. Одна формула для иконки и для линии. */
+const fanned = (p: Pt, off: Pt): Pt => ({
+  x: clamp(p.x + off.x, 0, W - 1),
+  y: clamp(p.y + off.y, 0, H - 1),
+});
 
 /** Дробные координаты всех отрядов в поле на момент `tNow` — рендер рисует прямо по ним. */
 export function unitFloatPositions(g: Game, tNow: number = g.t): UnitFloat[] {
@@ -240,11 +251,42 @@ export function unitFloatPositions(g: Game, tNow: number = g.t): UnitFloat[] {
   for (const u of g.units) {
     const f = unitFloat(g, u, tNow);
     if (!f) continue;
-    result.push({
-      id: u.id, type: u.type,
-      x: clamp(f.x + fanX(u.id), 0, W - 1),
-      y: clamp(f.y + fanY(u.id), 0, H - 1),
-    });
+    const p = fanned(f, fanOffset(u.id));
+    result.push({ id: u.id, type: u.type, x: p.x, y: p.y });
   }
   return result;
+}
+
+export interface UnitRoute {
+  id: number;
+  type: UnitType;
+  status: 'travel' | 'return';
+  done: Pt[];              // пройденная часть пути
+  left: Pt[];              // остаток до цели; последняя точка — куда идёт
+}
+
+/**
+ * Маршруты отрядов, которые прямо сейчас в дороге, — по ним рендер рисует линию пути.
+ * Координаты дробные, в клетках, веер уже применён (см. `fanOffset`).
+ *
+ * Фаза осмотра линии не даёт: отряд уже стоит в квадрате, и там про него говорят и иконка,
+ * и змейка покрытия. После конца дела линий нет вовсе — не мешать раскрытию следа пропавшего.
+ */
+export function unitRoutes(g: Game, tNow: number = g.t): UnitRoute[] {
+  if (g.over) return [];
+  const out: UnitRoute[] = [];
+  for (const u of g.units) {
+    const m = u.mission;
+    if (!m) continue;
+    if (u.status !== 'travel' && u.status !== 'return') continue;
+    const cut = trackSplit(m.track, phaseProgress(u, tNow));
+    if (cut.done.length < 2 && cut.left.length < 2) continue;   // рисовать нечего
+    const off = fanOffset(u.id);
+    out.push({
+      id: u.id, type: u.type, status: u.status,
+      done: cut.done.map(p => fanned(p, off)),
+      left: cut.left.map(p => fanned(p, off)),
+    });
+  }
+  return out;
 }

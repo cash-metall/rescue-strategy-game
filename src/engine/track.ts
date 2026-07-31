@@ -106,3 +106,21 @@ export function trackPos(tr: Track, p: number): Pt {
 
 /** Куда фаза приводит: для фазы осмотра это и есть место, где стоит отряд. */
 export const trackEnd = (tr: Track): Pt => cp(tr.pts[tr.pts.length - 1]);
+
+/**
+ * Делит траекторию прогрессом `p` на пройденную часть и остаток — для линии маршрута
+ * на карте. Точка разреза принадлежит обеим частям и равна `trackPos(tr, p)`, то есть
+ * ровно той точке, где сейчас стоит отряд: линия не имеет дырки на стыке, а иконка
+ * стоит на самом стыке. Части короче двух точек рисовать нечем — их отдаём как есть.
+ */
+export function trackSplit(tr: Track, p: number): { done: Pt[]; left: Pt[] } {
+  const n = tr.pts.length;
+  if (n < 2) return { done: [], left: [] };
+  const cut = trackPos(tr, p);
+  const done: Pt[] = [];
+  const left: Pt[] = [];
+  for (let i = 0; i < n; i++) (tr.ts[i] <= p ? done : left).push(cp(tr.pts[i]));
+  if (done.length && !same(done[done.length - 1], cut)) done.push(cp(cut));
+  if (left.length && !same(left[0], cut)) left.unshift(cp(cut));
+  return { done, left };
+}

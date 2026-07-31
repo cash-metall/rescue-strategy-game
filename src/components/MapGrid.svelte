@@ -3,7 +3,8 @@
   import { game } from '../state/game.svelte';
   import MapCell from './MapCell.svelte';
   import {
-    unitFloatPositions, coverRate, inRange, targetable, effMark, dirArrow, COLS, W, H, TYPES,
+    unitFloatPositions, unitRoutes, coverRate, inRange, targetable, effMark, dirArrow,
+    COLS, W, H, TYPES, type Pt,
   } from '../engine';
 
   const XS = [...Array(W).keys()];
@@ -146,6 +147,14 @@
   const LINES_D = [...Array(W + 1).keys()].map((i) => `M${i * CELL_PX},0V${GRID_PX}`)
     .concat([...Array(H + 1).keys()].map((i) => `M0,${i * CELL_PX}H${GRID_PX}`))
     .join(' ');
+
+  // ── Линии маршрутов ─────────────────────────────────────────────────────────
+  // Пути считает движок (`unitRoutes`) в координатах клеток и с тем же веером, что у иконок,
+  // — поэтому отряд едет ровно по своей линии. Здесь только перевод в пиксели сетки.
+  const routes = $derived(unitRoutes(g, game.tNow));
+  const px = (p: Pt): string => `${((p.x + 0.5) * CELL_PX).toFixed(1)},${((p.y + 0.5) * CELL_PX).toFixed(1)}`;
+  const polyD = (ps: Pt[]): string =>
+    ps.length < 2 ? '' : ps.map((p, i) => (i ? 'L' : 'M') + px(p)).join(' ');
 
   // ── Sticky-метки колонок и строк ─────────────────────────────────────────────
   interface LPos { txt: string; vx: number; vy: number; }
@@ -379,6 +388,30 @@
       {/each}
     </div>
 
+    <!-- Маршруты отрядов: слой под иконками, поверх содержимого клеток.
+         «Осталось» — сплошная жёлтая с тёмным гало (иначе янтарный вымывается на пергаменте),
+         «пройдено» — тише и пунктиром. Кольцо на конце показывает, в какой квадрат идут:
+         это единственный на карте признак «сюда группу уже отправили». -->
+    <svg class="routes" width={GRID_PX} height={GRID_PX}
+         viewBox="0 0 {GRID_PX} {GRID_PX}" aria-hidden="true">
+      {#each routes as r (r.id)}
+        {@const doneD = polyD(r.done)}
+        {@const leftD = polyD(r.left)}
+        <g class="route" class:back={r.status === 'return'}>
+          {#if doneD}<path class="rdone" d={doneD} />{/if}
+          {#if leftD}
+            <path class="rhalo" d={leftD} />
+            <path class="rleft" d={leftD} />
+          {/if}
+          {#if r.status === 'travel' && r.left.length}
+            {@const goal = r.left[r.left.length - 1]}
+            <circle class="rgoal" r="7"
+                    cx={(goal.x + 0.5) * CELL_PX} cy={(goal.y + 0.5) * CELL_PX} />
+          {/if}
+        </g>
+      {/each}
+    </svg>
+
     <!-- Иконки отрядов: абсолютный overlay в пространстве сетки (масштабируется вместе с gridwrap).
          Позиция пересчитывается КАЖДЫЙ КАДР по game.tNow, поэтому CSS-перехода здесь нет:
          движение и так идёт с частотой кадров, а переход поверх него только размазывал бы
@@ -508,6 +541,40 @@
 
   .clbl.ccol { transform: translateX(-50%); }
   .clbl.crow { transform: translateY(-50%); min-width: 18px; text-align: center; }
+
+  /* Линии маршрутов: между содержимым клеток и иконками отрядов */
+  .routes {
+    position: absolute; left: 0; top: 0;
+    overflow: visible;      /* гало по краю карты не обрезаем */
+    pointer-events: none;
+    z-index: 2;             /* иконки — 3, сетка — 4, подписи координат — 5 */
+  }
+
+  .routes path, .routes circle {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    /* толщина в экранных пикселях, как у сетки: от зума не плывёт */
+    vector-effect: non-scaling-stroke;
+  }
+
+  .routes .rhalo { stroke: rgba(50, 32, 0, .34); stroke-width: 4.5px; }
+  .routes .rleft { stroke: var(--amber);          stroke-width: 2px; }
+  .routes .rgoal { stroke: var(--amber);          stroke-width: 2px; }
+
+  /* Пройденная часть — тише и пунктиром. Штрих здесь ТЕКСТУРА, а не доля пути:
+     из-за non-scaling-stroke он живёт в экранных пикселях, и это как раз нужно —
+     размер пунктира одинаков на любом зуме (в отличие от змейки покрытия, где
+     дэшем нельзя было мерить проценты — см. docs/devlog.md). */
+  .routes .rdone {
+    stroke: var(--amber-dim);
+    stroke-width: 1.5px;
+    opacity: .45;
+    stroke-dasharray: 3 4;
+  }
+
+  /* Возврат домой: та же линия, но она уже не про «квадрат занят» */
+  .routes .route.back { opacity: .42; }
 
   /* Движение отрядов по карте */
   .units-overlay {
