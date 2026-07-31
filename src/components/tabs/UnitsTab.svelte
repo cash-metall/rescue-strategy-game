@@ -2,7 +2,7 @@
   import { game } from '../../state/game.svelte';
   import {
     TYPES, TRAINCOST, MAXLVL, coordName, fmtDur, fmtTime, gv, fatShown, fatLabel,
-    lvl, trainTarget, available, isBusy, needsRest, type Unit,
+    lvl, trainTarget, available, isBusy, needsRest, cellAt, coverRate, type Unit,
   } from '../../engine';
 
   const g = $derived(game.g);
@@ -13,8 +13,17 @@
     const left = Math.max(0, u.phaseEnd - g.t);
     if (u.status === 'travel') return `В пути к кв. ${coordName(u.mission!.x, u.mission!.y)} · прибытие через ${fmtDur(left)}`;
     if (u.status === 'search') {
-      const what = u.type === 'drone' ? 'Съёмка' : 'Осмотр';
-      return `${what} кв. ${coordName(u.mission!.x, u.mission!.y)} · ещё ~${fmtDur(left)}`;
+      const m = u.mission!;
+      const at = coordName(m.x, m.y);
+      // У коптера фаза съёмки идёт по таймеру — там `phaseEnd` не врёт.
+      if (u.type === 'drone') return `Съёмка кв. ${at} · ещё ~${fmtDur(left)}`;
+      // А осмотр кончается по `swept >= 100`, а не по прогнозу `estSearch`: усталость и погода
+      // режут темп уже в поле. Остаток от `phaseEnd` добегал до «ещё ~0 мин» и залипал, пока
+      // группа ещё работала — то же враньё, что было у змейки покрытия. Считаем по остатку работы.
+      const rate = coverRate(g, u, cellAt(g, m.x, m.y));
+      const rest = rate > 0.01 ? Math.ceil((100 - m.swept) / rate) : null;
+      return `Осмотр кв. ${at} · пройдено ${Math.round(m.swept)}%`
+        + (rest == null ? ' · темп упал почти до нуля' : ` · ещё ~${fmtDur(rest)}`);
     }
     if (u.status === 'return') return `Возвращается в лагерь · ${fmtDur(left)}`;
     if (isBusy(g, u)) return `Занята по работе · до ${fmtTime(u.busyUntil).split(' · ')[1]}`;

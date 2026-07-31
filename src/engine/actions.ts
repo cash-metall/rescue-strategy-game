@@ -8,7 +8,7 @@ import {
   planTrip, searchEst, freeWinds, windCapacity, windMinutes, isNight,
 } from './access';
 import { addUnit } from './generate';
-import { pushLog, forceReturn, finalizeOver } from './sim';
+import { pushLog, forceReturn, finalizeOver, setPhase } from './sim';
 import { rollEvent } from './events';
 import { ri, rf } from './rng';
 
@@ -40,27 +40,26 @@ export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = n
   const est = u.type === 'drone' ? RECON_MIN : Math.min(24 * 60, searchEst(g, u, cell));
   const m: Mission = {
     x: cell.x, y: cell.y, travel: trip.travel, estSearch: est, swept: 0, found: [],
-    retFrom: null, route: trip.route, junkAt: junkMarks(u),
+    track: trip.track, junkAt: junkMarks(u),
     event: null, hops: 0, hopDir: null, carrier: trip.carrier, aboard: false, footShare: trip.footShare,
-    pausedUntil: 0, gps: true, radio: true, lampOut: false,
+    pausedUntil: 0, pauseFrom: 0, gps: true, radio: true, lampOut: false,
     cells: u.type === 'drone' ? reconCells(u, cell) : undefined,
   };
   u.mission = m;
-  u.status = 'travel';
-  u.phaseStart = g.t; u.phaseEnd = g.t + trip.travel;
+  setPhase(g, u, 'travel', trip.travel);
   m.event = rollEvent(g, u, trip.travel * 2 + est);
 
   if (wind) {
     wind.passengers.push(u.id);
     if (wind.status === 'idle') {
-      wind.status = 'travel';
-      wind.phaseStart = g.t;
-      wind.phaseEnd = g.t + Math.max(1, trip.windMin);
+      // Машине — ТОЛЬКО её плечо: маршрут группы кончается в целевом квадрате, и по нему
+      // «Ветер» проезжал бы мимо точки высадки, а потом дёргался обратно.
       wind.mission = {
         x: trip.drop.x, y: trip.drop.y, travel: Math.max(1, trip.windMin), estSearch: 0, swept: 0, found: [],
-        retFrom: null, route: trip.route, junkAt: [], event: null, hops: 0, hopDir: null, carrier: null,
-        aboard: false, footShare: 1, pausedUntil: 0, gps: true, radio: true, lampOut: false,
+        track: trip.windTrack ?? trip.track, junkAt: [], event: null, hops: 0, hopDir: null, carrier: null,
+        aboard: false, footShare: 1, pausedUntil: 0, pauseFrom: 0, gps: true, radio: true, lampOut: false,
       };
+      setPhase(g, wind, 'travel', Math.max(1, trip.windMin));
       wind.mission.event = rollEvent(g, wind, trip.windMin * 2);
     }
     const tail = trip.footMin > 0 ? `, дальше ${fmtDur(trip.footMin)} пешком` : '';

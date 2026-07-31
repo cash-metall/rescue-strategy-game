@@ -8,7 +8,7 @@ import {
 } from './constants';
 import { rnd, ri, pick } from './rng';
 import { gv, coordName } from './util';
-import { isNight } from './access';
+import { isNight, unitById } from './access';
 
 /** Какие инциденты доступны этому отряду и с какими весами. */
 export function incidentPool(u: Unit): Partial<Record<IncidentKey, number>> {
@@ -115,7 +115,15 @@ export function applyEvent(
     }
     case 'flatTire': {
       const stop = ri(FLAT_TIRE_STOP[0], FLAT_TIRE_STOP[1]);
-      m.pausedUntil = g.t + stop;
+      // Стоянка удлиняет фазу, а не «съедает» дорогу: иначе колесо, пробитое в начале
+      // длинного рейса, не стоило вообще ничего, а иконка машины продолжала ехать.
+      // Пассажиры ждут вместе с машиной (docs/incidents.md).
+      for (const p of [u, ...u.passengers.map(id => unitById(g, id))]) {
+        if (!p?.mission || p.status === 'idle') continue;
+        p.mission.pauseFrom = g.t;
+        p.mission.pausedUntil = g.t + stop;
+        p.phaseEnd += stop;
+      }
       log(g, `🛞 ${u.name}: пробито колесо, вынужденная остановка на ${stop} мин.`, 'warn');
       emit({ kind: 'toast', text: `🛞 ${u.name}: остановка ${stop} мин`, tone: 'bad' });
       return false;

@@ -45,13 +45,18 @@ class GameStore {
   sheet = $state<'none' | 'cell' | 'tabs'>('none'); // мобильные bottom-sheet (на десктопе игнорируется)
   resultsFab = $state(false);          // плавающая кнопка «вернуться к итогам»
   timeScale = $state(1);               // множитель скорости: 1× / 2× / 4× (эфемерно, не в сейве)
+  /**
+   * Непрерывное игровое время в минутах (дробное): `g.t` + недошагнутый остаток.
+   * По нему рендер каждый кадр берёт всё, что двигается: позиции отрядов и прогресс змейки
+   * покрытия. Поэтому плавность не зависит от того, в каком кадре случился шаг симуляции —
+   * и поэтому же длительность шага рендеру знать больше не нужно (прежний геттер `stepMs`
+   * и переменная `--move-ms` удалены). Анимировать эти величины CSS-переходом НЕЛЬЗЯ:
+   * переход поверх покадровой отрисовки не сглаживает, а размазывает и живёт своей жизнью.
+   */
+  tNow = $state(0);
   private pausedBeforeModal = false;
   private overHandled = false;
   private acc = 0;                     // накопленные игровые минуты (дробные)
-
-  // Реальных миллисекунд на один шаг simMinute при текущей скорости.
-  // Нужен рендеру: длительность CSS-перехода движения = шагу, иначе анимация лагает.
-  get stepMs(): number { return 1000 / (GAME_MIN_PER_SEC * this.timeScale); }
 
   heat = $derived(this.g.ui.heat && this.g.buildings.carto >= 1 ? heatScores(this.g) : null);
 
@@ -67,7 +72,9 @@ class GameStore {
   /** Вызывается циклом кадров с реальным dt (мс). Копит игровое время и
    *  прокручивает симуляцию фиксированными шагами по одной минуте. */
   tick(dtMs: number): void {
-    if (this.paused || this.g.over || this.modal) { this.acc = 0; return; }
+    // На паузе накопитель НЕ обнуляем: копить всё равно нечему (мы вышли раньше), зато
+    // остаток не теряется и отряды замирают ровно там, где стояли, без отскока назад.
+    if (this.paused || this.g.over || this.modal) return;
     this.acc += (Math.min(dtMs, MAX_FRAME_MS) / 1000) * GAME_MIN_PER_SEC * this.timeScale;
     let steps = 0;
     while (this.acc >= 1 && steps < MAX_STEPS) {
@@ -76,6 +83,8 @@ class GameStore {
       steps++;
       if (this.g.over || this.g.quest) { this.acc = 0; break; }
     }
+    // Кламп на случай, если MAX_STEPS не дал догнать: рендер не должен уехать вперёд симуляции.
+    this.tNow = this.g.t + Math.min(this.acc, 1);
     // найден живым после ухода медиков — сначала мини-квест первой помощи
     if (this.g.quest && this.modal !== 'quest') { this.paused = true; this.openModal('quest'); return; }
     if (this.g.over && !this.overHandled) this.onCaseEnd();
@@ -99,6 +108,8 @@ class GameStore {
     this.sheet = 'none';
     this.g = seed(this.campaign);
     this.overHandled = false;
+    this.acc = 0;
+    this.tNow = 0;
     this.paused = true;
     this.introStart = true;
     this.openModal('intro');
@@ -119,7 +130,10 @@ class GameStore {
     if (!this.g.over) this.paused = this.pausedBeforeModal;
   }
   // «Начать операцию» из интро — снять паузу.
-  beginCase(): void { this.modal = null; this.paused = false; this.timeScale = 1; this.acc = 0; }
+  beginCase(): void {
+    this.modal = null; this.paused = false; this.timeScale = 1;
+    this.acc = 0; this.tNow = this.g.t;
+  }
   showMap(): void { this.modal = null; this.resultsFab = true; }
   backToResults(): void { this.resultsFab = false; this.openModal('results'); }
 

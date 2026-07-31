@@ -3,6 +3,7 @@ export * from './constants';
 export * from './rng';
 export * from './util';
 export * from './path';
+export * from './track';
 export * from './access';
 export * from './events';
 export * from './generate';

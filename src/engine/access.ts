@@ -1,10 +1,13 @@
-import type { Game, Unit, Cell, Clue, UnitType, Pt } from './types';
+import type { Game, Unit, Cell, Clue, UnitType, Pt, Mission } from './types';
 import { cheb, dist, clamp } from './util';
 import {
   W, H, TYPES, SMOD, NIGHT, WEATHER, RANGE, COVER_BASE, lvl, RESTM, REST_MULT,
   MISSCAP, TENTCAP, WIND_PASSENGERS,
 } from './constants';
 import { findPath, moverOf, passable } from './path';
+import {
+  type Track, buildTrack, joinTracks, lineTrack, trackEnd, trackPos, withStart,
+} from './track';
 
 export const cellAt = (g: Game, x: number, y: number): Cell => g.map[y][x];
 export const clueById = (g: Game, id: number): Clue | undefined => g.clues.find(c => c.id === id);
@@ -89,7 +92,8 @@ export const restRate = (g: Game, u: Unit): number =>
 
 export interface Trip {
   travel: number;          // минут до цели всего
-  route: Pt[];             // клетки маршрута (для отрисовки)
+  track: Track;            // траектория ОТРЯДА: плечо машины + пеший хвост, время по плечам
+  windTrack: Track | null; // траектория «Ветра»: только его плечо, до точки высадки
   carrier: number | null;  // id «Ветра»
   footShare: number;       // доля времени, пройденная пешком (усталость только за неё)
   reached: boolean;        // добрались ли собственно до цели
@@ -110,7 +114,11 @@ export function planTrip(g: Game, u: Unit, cell: Cell, carrier: Unit | null = nu
 
   if (u.type === 'drone') {
     const t = Math.max(3, Math.round(dist(g.hq, cell) * T.cellMin * (1 / lvlSpd(u))));
-    return { travel: t, route: [{ ...g.hq }, { x: cell.x, y: cell.y }], carrier: null, footShare: 0, reached: true, windMin: 0, footMin: t, drop: { x: cell.x, y: cell.y } };
+    // Коптер летит напрямую, местность ему не помеха — прямая, а не путь по клеткам.
+    return {
+      travel: t, track: lineTrack(g.hq, cell), windTrack: null, carrier: null, footShare: 0,
+      reached: true, windMin: 0, footMin: t, drop: { x: cell.x, y: cell.y },
+    };
   }
 
   if (carrier) {
@@ -120,13 +128,21 @@ export function planTrip(g: Game, u: Unit, cell: Cell, carrier: Unit | null = nu
     const fp = findPath(g, drop, cell, 'foot');
     const footMin = wp.reached ? 0 : legMin(fp.cost, T.cellMin, lvlSpd(u), u.fatigue);
     const travel = Math.max(1, windMin + footMin);
-    const route = wp.reached ? wp.cells : wp.cells.concat(fp.cells.slice(1));
-    return { travel, route, carrier: carrier.id, footShare: footMin / travel, reached: true, windMin, footMin, drop };
+    // Время делится по плечам: пока едут — быстро, пеший хвост — медленно.
+    const windTrack = buildTrack(g, wp.cells, 'wind');
+    const track = wp.reached ? windTrack : joinTracks([
+      { track: windTrack, minutes: windMin },
+      { track: buildTrack(g, fp.cells, 'foot'), minutes: footMin },
+    ]);
+    return { travel, track, windTrack, carrier: carrier.id, footShare: footMin / travel, reached: true, windMin, footMin, drop };
   }
 
   const fp = findPath(g, g.hq, cell, 'foot');
   const travel = legMin(fp.cost, T.cellMin, lvlSpd(u), u.fatigue);
-  return { travel, route: fp.cells, carrier: null, footShare: 1, reached: fp.reached, windMin: 0, footMin: travel, drop: { x: cell.x, y: cell.y } };
+  return {
+    travel, track: buildTrack(g, fp.cells, 'foot'), windTrack: null, carrier: null, footShare: 1,
+    reached: fp.reached, windMin: 0, footMin: travel, drop: { x: cell.x, y: cell.y },
+  };
 }
 
 /** Сколько минут «Ветер» уровня L доедет от `from` до `to` (для расчёта подбора). */
@@ -155,50 +171,33 @@ export function sendBlock(g: Game, u: Unit, cell: Cell): string | null {
   return null;
 }
 
-/** Плавная интерполяция позиции вдоль маршрута (дробные координаты клетки).
- *  reverse=true — обратный ход (return), p идёт 0→1, позиция route[end]→route[0]. */
-function routeFloat(route: Pt[], p: number, reverse: boolean): { x: number; y: number } {
-  const n = route.length;
-  if (n === 1) return { x: route[0].x, y: route[0].y };
-  const frac = (reverse ? 1 - p : p) * (n - 1);
-  // Граничные проверки ОБЯЗАТЕЛЬНЫ: при frac=n-1 floor=n-1, но i зажат в n-2 → даст route[n-2].
-  if (frac <= 0)     return { x: route[0].x,     y: route[0].y };
-  if (frac >= n - 1) return { x: route[n - 1].x, y: route[n - 1].y };
-  const i = Math.floor(frac);
-  const t = frac - i;
-  return {
-    x: route[i].x + (route[i + 1].x - route[i].x) * t,
-    y: route[i].y + (route[i + 1].y - route[i].y) * t,
-  };
+/**
+ * Доля пройденной фазы к моменту `tNow` (игровые минуты, можно дробные).
+ * Единственная формула прогресса в игре: по ней и рисуется позиция, и считается
+ * точка разворота в `forceReturn` — разъехаться им нельзя, иначе иконка прыгнет.
+ *
+ * Вынужденная остановка («Ветер» пробил колесо) из прогресса вычитается: её минуты
+ * добавлены к `phaseEnd`, и всё это время отряд стоит на месте.
+ */
+export function phaseProgress(u: Unit, tNow: number): number {
+  const m: Mission | null = u.mission;
+  const stop = m && m.pauseFrom > 0 ? Math.max(0, m.pausedUntil - m.pauseFrom) : 0;
+  const held = stop > 0 ? clamp(tNow - m!.pauseFrom, 0, stop) : 0;
+  const span = Math.max(1, u.phaseEnd - u.phaseStart - stop);
+  return clamp((tNow - u.phaseStart - held) / span, 0, 1);
 }
 
-/** Где отряд находится прямо сейчас — дробные координаты клетки. null — он не в поле. */
-export function unitFloat(g: Game, u: Unit): Pt | null {
+/**
+ * Где отряд находится в момент `tNow` — дробные координаты клетки; null — он не в поле.
+ * `tNow` может опережать `g.t` меньше чем на минуту (рендер зовёт каждый кадр).
+ */
+export function unitFloat(g: Game, u: Unit, tNow: number = g.t): Pt | null {
   const m = u.mission;
   if (!m) return null;
-  const p = clamp((g.t - u.phaseStart) / Math.max(1, u.phaseEnd - u.phaseStart), 0, 1);
-
-  // Своим ходом: по маршруту, а если маршрута нет — по прямой.
-  // rev = обратная дорога (от точки возврата к штабу).
-  const walk = (rev: boolean): Pt => {
-    const r = m.route;
-    if (r && r.length > 1) return routeFloat(r, p, rev);
-    const a = rev ? (m.retFrom || m) : g.hq;
-    const b = rev ? g.hq : m;
-    return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
-  };
-  // В машине: позиция «Ветра». null — машины рядом нет (высадил или ещё не доехал),
-  // значит отряд идёт сам.
-  const ride = (rev: boolean): Pt | null => {
-    const car = m.carrier != null ? unitById(g, m.carrier) : undefined;
-    if (!car?.mission?.route || car.status !== (rev ? 'return' : 'travel')) return null;
-    const cp = clamp((g.t - car.phaseStart) / Math.max(1, car.phaseEnd - car.phaseStart), 0, 1);
-    return routeFloat(car.mission.route, cp, rev);
-  };
-
-  if (u.status === 'search') return { x: m.x, y: m.y };
-  if (u.status === 'travel') return ride(false) || walk(false);
-  if (u.status === 'return') return (m.aboard ? ride(true) : null) || walk(true);
+  // Осмотр: отряд стоит там, куда его привела траектория. Это и есть квадрат задачи,
+  // а если до цели было не добраться — ближайшая клетка, куда реально дошли.
+  if (u.status === 'search') return trackEnd(m.track);
+  if (u.status === 'travel' || u.status === 'return') return trackPos(m.track, phaseProgress(u, tNow));
   return null;
 }
 
@@ -211,35 +210,40 @@ export function unitCell(g: Game, u: Unit): Pt {
   };
 }
 
+/** Траектория «отсюда в лагерь». Начинается ровно в текущей точке отряда: разворот
+ *  с маршрута, хоп собаки и подбор машиной меняют фазу на ходу, и любой другой старт
+ *  означал бы телепорт иконки. */
+export function homeTrack(g: Game, u: Unit): Track {
+  const from = unitFloat(g, u) ?? { ...g.hq };
+  if (u.type === 'drone') return lineTrack(from, g.hq);      // коптер летит напрямую
+  const mover = moverOf(u.type);
+  const pts = withStart(from, findPath(g, unitCell(g, u), g.hq, mover, u.level).cells);
+  return buildTrack(g, pts, mover);
+}
+
 export interface UnitFloat { id: number; type: UnitType; x: number; y: number; }
 
-const FAN_R = 0.24;   // радиус разброса иконок внутри клетки, в долях клетки
+const FAN_R  = 0.22;          // радиус разброса иконок внутри клетки, в долях клетки
+const GOLDEN = 2.39996323;    // золотой угол: соседние id расходятся по разным сторонам
 
-/** Дробные координаты всех отрядов в поле — рендер рисует по ним плавное движение.
- *  Отряды, стоящие в одной клетке, разводятся веером: иначе иконки полностью
- *  перекрывают друг друга и в квадрате «видно» только один отряд. */
-export function unitFloatPositions(g: Game): UnitFloat[] {
+/**
+ * Постоянное смещение иконки внутри клетки — функция ТОЛЬКО от номера отряда.
+ * Зависеть от соседей по клетке нельзя: у движущегося отряда состав клетки меняется
+ * на каждой границе, и смещение (а с ним и иконки всех соседей) прыгало бы туда-сюда.
+ */
+const fanX = (id: number): number => Math.cos(id * GOLDEN) * FAN_R;
+const fanY = (id: number): number => Math.sin(id * GOLDEN) * FAN_R;
+
+/** Дробные координаты всех отрядов в поле на момент `tNow` — рендер рисует прямо по ним. */
+export function unitFloatPositions(g: Game, tNow: number = g.t): UnitFloat[] {
   const result: UnitFloat[] = [];
   for (const u of g.units) {
-    const f = unitFloat(g, u);
+    const f = unitFloat(g, u, tNow);
     if (!f) continue;
-    result.push({ id: u.id, type: u.type, x: clamp(f.x, 0, W - 1), y: clamp(f.y, 0, H - 1) });
-  }
-
-  // Смещение зависит только от номера отряда внутри клетки, поэтому иконка стоит
-  // ровно, пока состав клетки не меняется.
-  const byCell = new Map<string, UnitFloat[]>();
-  for (const p of result) {
-    const k = Math.round(p.x) + ',' + Math.round(p.y);
-    const arr = byCell.get(k);
-    if (arr) arr.push(p); else byCell.set(k, [p]);
-  }
-  for (const arr of byCell.values()) {
-    if (arr.length < 2) continue;
-    arr.forEach((p, i) => {
-      const a = Math.PI + (2 * Math.PI * i) / arr.length;   // n = 2 → строго слева и справа
-      p.x += Math.cos(a) * FAN_R;
-      p.y += Math.sin(a) * FAN_R;
+    result.push({
+      id: u.id, type: u.type,
+      x: clamp(f.x + fanX(u.id), 0, W - 1),
+      y: clamp(f.y + fanY(u.id), 0, H - 1),
     });
   }
   return result;

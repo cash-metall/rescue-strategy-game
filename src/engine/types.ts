@@ -1,4 +1,7 @@
 // Типы движка. Только данные — никакого DOM/Svelte.
+import type { Track } from './track';
+
+export type { Track };
 
 export type UnitType = 'foot' | 'dog' | 'wind' | 'drone';
 export type Terrain = 'forest' | 'dense' | 'meadow' | 'marsh' | 'hills' | 'lake' | 'base';
@@ -74,8 +77,12 @@ export interface Mission {
    */
   swept: number;
   found: MapObject[];      // что несут в штаб (если связи не хватает на живую передачу)
-  retFrom?: Pt | null;
-  route?: Pt[];            // найденный путь (для отрисовки и «улик по пути»)
+  /**
+   * Траектория ТЕКУЩЕЙ фазы: по ней рендер берёт позицию в любой дробный момент,
+   * а `windArrived` — клетки, мимо которых проехал «Ветер». Меняется только через
+   * `setPhase`, и каждая новая начинается там, где отряд стоит сейчас.
+   */
+  track: Track;
   junkAt: number[];        // отметки покрытия, на которых всплывёт мусор
   event: MissionEvent | null;
   hops: number;            // переходы следовой собаки (максимум 1)
@@ -84,6 +91,7 @@ export interface Mission {
   aboard: boolean;         // группа уже в машине на обратной дороге (едет, а не идёт)
   footShare: number;       // доля пути, пройденная пешком (0 = всю дорогу везли)
   pausedUntil: number;     // вынужденная остановка (пробитое колесо у «Ветра»)
+  pauseFrom: number;       // минута начала остановки: её время не идёт в прогресс фазы
   gps: boolean;            // работает ли навигатор
   radio: boolean;          // работает ли рация группы
   lampOut: boolean;        // сел фонарь

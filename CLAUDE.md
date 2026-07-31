@@ -1,4 +1,4 @@
-# CLAUDE.md — «Оперативный штаб · Поиск пропавшего»
+﻿# CLAUDE.md — «Оперативный штаб · Поиск пропавшего»
 
 Браузерная игра-стратегия про поисково-спасательную операцию: игрок развивает штаб, нанимает и
 обучает отряды, отправляет их разведывать квадраты леса, по уликам сужает район поиска и находит
@@ -70,13 +70,13 @@ npm run test:watch  # vitest в watch-режиме
 ```
 src/
   engine/     ЧИСТАЯ логика (TS, без DOM/Svelte) — движок. Тестируется в node.
-    types constants rng util path access events generate sim actions heat campaign
+    types constants rng util path track access events generate sim actions heat campaign
     + index.ts (барель)
   state/      game.svelte.ts (стор с рунами: g=$state, tick, действия, модалки, sheet), fx.svelte.ts (тосты)
   components/ MapHUD (шапка карты), MapGrid/MapCell, CellSheet, TabBar/TabPanel, tabs/*,
               Modal + Intro/Settings/Results/Quest, Toasts, ResultsFab
   styles/     tokens.css (переменные), global.css (reset + язык карты/панелей/модалок, unscoped)
-  test/       generation / autoplayer / campaign / mechanics — vitest (35 тестов)
+  test/       generation / autoplayer / campaign / mechanics / motion — vitest (49 тестов)
 public/images/  SVG-ассеты (топознаки местности, юниты, штаб, маркеры)
 dist/           собранная игра, закоммичена — для ручной передачи. GitHub Pages при этом раздаёт
                 НЕ её: .github/workflows/deploy.yml пересобирает проект на каждый push в main
@@ -93,9 +93,12 @@ legacy/         оригинальная однофайловая версия r
 - **Тик-луп** — в `App.onMount` (`requestAnimationFrame` + `cancelAnimationFrame`). Не класть в `$effect`.
 - **Скорость игры меняется ТОЛЬКО через `GAME_MIN_PER_SEC` и `timeScale`** (`state/game.svelte.ts`).
   `tick(dt)` зовётся каждый кадр и копит игровые минуты по реальному времени. Замедлять игру
-  пропуском кадров, троттлингом rAF, `setInterval` или растягиванием `--move-ms` **нельзя**:
-  анимация движения отрядов привязана к шагу симуляции и от такого «замедления» начинает дёргаться.
+  пропуском кадров, троттлингом rAF или `setInterval` **нельзя**.
   Сейчас 1× / 2× / 4× = 2 / 4 / 8 игровых минут на реальную секунду.
+- **Всё, что движется на карте, — функция `game.tNow`** (непрерывное игровое время), а не
+  CSS-переход длиной в шаг симуляции: позиции отрядов и змейка покрытия пересчитываются каждый
+  кадр. Возвращать сюда `transition` нельзя — он не сглаживает, а размазывает и живёт своей
+  жизнью; чем это кончается, описано в `docs/devlog.md`.
 - **Русский язык в UI: следить за родом.** У юнитов и профилей есть поле `gen` (`'f'`/`'m'`), для
   глаголов — хелпер `gv(u,'вернулась','вернулся')`. Имена отрядов **не склоняем** — фразу строим так,
   чтобы имя стояло в именительном («выехал за группой в кв. D8 (Лиса-2)», а не «забрать Лису-2»).

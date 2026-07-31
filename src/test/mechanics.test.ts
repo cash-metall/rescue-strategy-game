@@ -164,6 +164,80 @@ describe('«Ветер» как транспорт', () => {
     expect(w.mission).toBeNull();
   });
 
+  it('не выезжает, если группа дойдёт до лагеря раньше, чем машина доедет', () => {
+    const g = fresh();
+    const w = hire(g, 'wind');
+    const foot = g.units.find(u => u.type === 'foot')!;
+    const cell = g.map.flat()
+      .filter(c => targetable(c) && passable(c.terrain, 'foot', 1) && windMinutes(g, w, g.hq, c) != null)
+      .sort((a, b) => Math.hypot(b.x - g.hq.x, b.y - g.hq.y) - Math.hypot(a.x - g.hq.x, a.y - g.hq.y))[0];
+
+    dispatchUnit(g, foot, cell, null);
+    foot.mission!.event = null;
+    simMinute(g, noop);                          // отошла на одну минуту
+    expect(foot.status).toBe('travel');
+    forceReturn(g, foot, 'recall', noop);        // возврат ~2 минуты — машина не успеет
+
+    expect(foot.phaseEnd - foot.phaseStart).toBeLessThan(windMinutes(g, w, g.hq, cell)!);
+    expect(foot.mission!.carrier).toBeNull();    // рейс был бы пустым от начала до конца
+    expect(w.status).toBe('idle');
+    expect(w.mission).toBeNull();
+  });
+
+  it('разворачивается на полдороге, если подбирать стало некого', () => {
+    const g = fresh();
+    const w = hire(g, 'wind');
+    const foot = g.units.find(u => u.type === 'foot')!;
+    const cell = g.map.flat()
+      .filter(c => targetable(c) && passable(c.terrain, 'foot', 1) && windMinutes(g, w, g.hq, c) != null)
+      .sort((a, b) => Math.hypot(b.x - g.hq.x, b.y - g.hq.y) - Math.hypot(a.x - g.hq.x, a.y - g.hq.y))[0];
+
+    dispatchUnit(g, foot, cell, null);
+    foot.mission!.event = null;
+    runUntil(g, () => foot.status === 'search');
+    forceReturn(g, foot, 'recall', noop);
+    expect(w.status).toBe('travel');              // машина выехала навстречу
+    const wouldArrive = w.phaseEnd;
+
+    foot.phaseEnd = g.t;                          // группа доходит сама прямо сейчас
+    expect(runUntil(g, () => foot.status === 'idle', 50)).toBe(true);
+    expect(runUntil(g, () => w.status !== 'travel', 50)).toBe(true);
+
+    expect(g.t).toBeLessThan(wouldArrive);        // развернулся, не доехав до квадрата
+    expect(w.passengers).toEqual([]);
+    expect(runUntil(g, () => w.status === 'idle')).toBe(true);
+    expect(w.mission).toBeNull();
+  });
+
+  it('пока за группой едет одна машина, вторую за ней не высылают', () => {
+    const g = fresh();
+    const w1 = hire(g, 'wind');
+    const w2 = hire(g, 'wind');
+    const foot = g.units.find(u => u.type === 'foot')!;
+    const cell = g.map.flat()
+      .filter(c => targetable(c) && passable(c.terrain, 'foot', 1) && windMinutes(g, w1, g.hq, c) != null)
+      .sort((a, b) => Math.hypot(b.x - g.hq.x, b.y - g.hq.y) - Math.hypot(a.x - g.hq.x, a.y - g.hq.y))[0];
+
+    dispatchUnit(g, foot, cell, w1);              // w1 везёт группу на задачу
+    foot.mission!.event = null;
+    w1.mission!.event = null;
+    // Отзыв ближе к концу дороги: пешком до лагеря далеко, машине до цели — уже нет,
+    // поэтому подбор реально состоится (иначе разворот был бы правильным ответом).
+    const travel = foot.phaseEnd - foot.phaseStart;
+    runUntil(g, () => g.t - foot.phaseStart >= Math.floor(travel * 0.8), 200);
+    expect(w1.status).toBe('travel');
+
+    forceReturn(g, foot, 'recall', noop);         // отзыв прямо с дороги
+    expect(foot.mission!.carrier).toBe(w1.id);    // перевозчик не сменился
+    expect(w2.status).toBe('idle');               // и вторая машина никуда не поехала
+    expect(w2.mission).toBeNull();
+
+    // w1 доезжает и подбирает свою группу — пустым не возвращается
+    expect(runUntil(g, () => !!foot.mission?.aboard || foot.status === 'idle')).toBe(true);
+    expect(foot.mission?.aboard).toBe(true);
+    expect(w2.mission).toBeNull();
+  });
+
   it('вместимость растёт с уровнем и наследуется на ур. 3', () => {
     const g = fresh();
     const w = hire(g, 'wind');

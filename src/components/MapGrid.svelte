@@ -3,7 +3,7 @@
   import { game } from '../state/game.svelte';
   import MapCell from './MapCell.svelte';
   import {
-    unitFloatPositions, inRange, targetable, effMark, dirArrow, COLS, W, H, TYPES,
+    unitFloatPositions, coverRate, inRange, targetable, effMark, dirArrow, COLS, W, H, TYPES,
   } from '../engine';
 
   const XS = [...Array(W).keys()];
@@ -12,20 +12,31 @@
   const IMG = import.meta.env.BASE_URL + 'images/';
 
   const g          = $derived(game.g);
-  const unitFloats = $derived(unitFloatPositions(g));
+  // Позиции отрядов пересчитываются каждый кадр по непрерывному времени game.tNow —
+  // поэтому плавность не зависит от того, когда именно случился шаг симуляции.
+  const unitFloats = $derived(unitFloatPositions(g, game.tNow));
   const heat       = $derived(game.heat);
-  // Длительность перехода движения = шагу симуляции (чуть короче, чтобы всегда успеть завершиться).
-  const moveMs     = $derived(Math.round(game.stepMs * 0.95));
 
-  // Квадраты, которые прямо сейчас прочёсываются (status === 'search')
-  const searchingCells = $derived.by(() => {
-    const s = new Set<string>();
+  // Квадраты, которые прямо сейчас прочёсываются: значение — прогресс ТЕКУЩЕГО прохода
+  // (`mission.swept`, 0..100) на момент game.tNow.
+  //
+  // Внутри минуты прогресс доводится тем же `coverRate`, которым движок добавляет покрытие
+  // на каждом шаге: змейка обязана дорисовываться ровно к концу осмотра, а осмотр кончается
+  // по `swept >= 100`, а не по таймеру фазы. Отсюда и интерполяция по времени, а не CSS-переход
+  // длиной в шаг: тот дотягивал змейку с точностью «плюс-минус шаг» и жил своей жизнью.
+  //
+  // Севший навигатор трек не растит (docs/incidents.md, gpsDead), коптер покрытия не даёт.
+  const searching = $derived.by(() => {
+    const out = new Map<string, number>();
+    const frac = Math.min(1, Math.max(0, game.tNow - g.t));
     for (const u of g.units) {
-      if (u.status === 'search' && u.mission) {
-        s.add(`${u.mission.x},${u.mission.y}`);
-      }
+      const m = u.mission;
+      if (u.status !== 'search' || !m || !m.gps) continue;
+      const live = Math.min(100, m.swept + coverRate(g, u, g.map[m.y][m.x]) * frac);
+      const k = `${m.x},${m.y}`;
+      out.set(k, Math.max(out.get(k) ?? 0, live));
     }
-    return s;
+    return out;
   });
 
   interface Mark { hq?: boolean; lkp?: boolean; victim?: boolean; trail?: boolean; sight?: 'human' | 'object'; arrows: { cls: string; ch: string }[]; }
@@ -350,7 +361,7 @@
 <div class="mapwrap" bind:this={wrapEl}>
 
   <!-- Трансформируемая сетка -->
-  <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})" style:--s={scale} style:--move-ms="{moveMs}ms">
+  <div class="gridwrap" style:transform="translate({tx}px,{ty}px) scale({scale})" style:--s={scale}>
     <div class="grid" class:zoomed>
       {#each YS as y (y)}
         {#each XS as x (x)}
@@ -362,22 +373,23 @@
             mark={marks.get(x + ',' + y)}
             over={!!g.over}
             {zoomed}
-            isSearching={searchingCells.has(x + ',' + y)}
+            live={searching.get(x + ',' + y) ?? 0}
           />
         {/each}
       {/each}
     </div>
 
-    <!-- Плавные иконки отрядов: абсолютный overlay в пространстве сетки (масштабируется вместе с gridwrap).
-         Длительность перехода = шагу симуляции (game.stepMs): позиция обновляется раз в шаг,
-         поэтому анимация должна занимать ровно этот интервал — иначе на 2×/4× движение лагает. -->
+    <!-- Иконки отрядов: абсолютный overlay в пространстве сетки (масштабируется вместе с gridwrap).
+         Позиция пересчитывается КАЖДЫЙ КАДР по game.tNow, поэтому CSS-перехода здесь нет:
+         движение и так идёт с частотой кадров, а переход поверх него только размазывал бы
+         правду и превращал любую смену фазы в полёт иконки через карту.
+         Двигаем transform, а не left/top: это paint без пересчёта раскладки. -->
     <div class="units-overlay" aria-hidden="true">
       {#each unitFloats as u (u.id)}
         <img
           class="uico"
           src="{IMG}{TYPES[u.type].svg}"
-          style:left="{(u.x + 0.5) * CELL_PX}px"
-          style:top="{(u.y + 0.5) * CELL_PX}px"
+          style:transform="translate({(u.x + 0.5) * CELL_PX}px, {(u.y + 0.5) * CELL_PX}px)"
           alt={u.type}
         />
       {/each}
@@ -497,7 +509,7 @@
   .clbl.ccol { transform: translateX(-50%); }
   .clbl.crow { transform: translateY(-50%); min-width: 18px; text-align: center; }
 
-  /* Плавное движение отрядов по карте */
+  /* Движение отрядов по карте */
   .units-overlay {
     position: absolute;
     top: 0; left: 0;
@@ -507,15 +519,14 @@
 
   .uico {
     position: absolute;
+    top: 0; left: 0;
     width: 14px; height: 14px;
-    /* центрируем иконку на позиции */
+    /* Центрирование иконки на позиции. Отдельное свойство translate применяется ДО
+       transform, поэтому спокойно живёт вместе с покадровым translate() из разметки. */
     translate: -50% -50%;
     filter: invert(1) drop-shadow(0 0 2px rgba(255,255,255,.9));
-    /* длительность перехода задаётся из JS под шаг симуляции (--move-ms) */
-    transition: left var(--move-ms, 490ms) linear, top var(--move-ms, 490ms) linear;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .uico { transition: none; }
+    /* Никакого transition: позицию рисует каждый кадр game.tNow (см. разметку).
+       will-change тоже не ставим — принудительный слой держит устаревший raster scale
+       и мылит иконку при зуме (та же причина, что у .gridwrap). */
   }
 </style>

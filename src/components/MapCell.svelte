@@ -10,19 +10,50 @@
     arrows: { cls: string; ch: string }[];
   }
 
-  let { cell, far, heat, mark, over, zoomed, isSearching }: {
+  let { cell, far, heat, mark, over, zoomed, live }: {
     cell: Cell; far: boolean; heat: number;
     mark?: Mark; over: boolean; zoomed: boolean;
-    isSearching: boolean;
+    /** Прогресс прохода, который идёт в квадрате ПРЯМО СЕЙЧАС, 0..100 (0 — никто не работает). */
+    live: number;
   } = $props();
 
   // GPS-трек змейкой: 5 горизонтальных проходов (viewBox 100×100)
-  // Путь: M6,12 → 94,12 (вправо) → 94,30 (вниз) → 6,30 (влево) → … → 94,84
-  // Длина: 5 × 88 + 4 × 18 = 512 ед.
-  const TRACK_LEN = 512;
-  // Рисуется ОТОБРАЖАЕМОЕ покрытие: при севшем навигаторе трек не появляется,
-  // хотя движок помнит, что квадрат уже обследован (docs/incidents.md, gpsDead).
-  const trackOffset = $derived(TRACK_LEN * (1 - cell.shown / 100));
+  // M6,12 → 94,12 (вправо) → 94,30 (вниз) → 6,30 (влево) → … → 94,84
+  const TRACK: [number, number][] = [
+    [6, 12], [94, 12], [94, 30], [6, 30], [6, 48], [94, 48], [94, 66], [6, 66], [6, 84], [94, 84],
+  ];
+  const TRACK_LEN = 512;   // 5 × 88 + 4 × 18 — сумма осевых сегментов выше
+
+  /**
+   * Путь, прорисованный на `pct` процентов; '' — рисовать нечего.
+   *
+   * Именно путь, а НЕ `stroke-dashoffset`: при `vector-effect: non-scaling-stroke` браузер
+   * считает штрих (и вместе с ним `dasharray`) в экранных пикселях, а не в единицах viewBox.
+   * Длина этой змейки на экране — `512 × 46/100 × зум`, поэтому «залить N% пути» дэшем
+   * невозможно: доля заливки зависела бы от зума карты. Проверено в Chrome — при зуме 0.5
+   * трек добегал до конца на 50% покрытия и дальше стоял (docs/devlog.md).
+   */
+  function trackPath(pct: number): string {
+    if (!(pct > 0)) return '';
+    let left = TRACK_LEN * Math.min(100, pct) / 100;
+    let d = `M${TRACK[0][0]},${TRACK[0][1]}`;
+    for (let i = 1; i < TRACK.length && left > 0; i++) {
+      const [ax, ay] = TRACK[i - 1], [bx, by] = TRACK[i];
+      const len = Math.abs(bx - ax) + Math.abs(by - ay);      // сегменты только осевые
+      if (left >= len) { d += ` L${bx},${by}`; left -= len; continue; }
+      const k = left / len;
+      d += ` L${(ax + (bx - ax) * k).toFixed(2)},${(ay + (by - ay) * k).toFixed(2)}`;
+      left = 0;
+    }
+    return d;
+  }
+
+  // Два слоя. Тусклый — ОТОБРАЖАЕМОЕ покрытие клетки (при севшем навигаторе не растёт, хотя
+  // движок покрытие помнит — docs/incidents.md, gpsDead). Яркий — проход, который идёт сейчас:
+  // он стартует с нуля на каждом визите и потому дорисовывается ровно тогда, когда группа
+  // заканчивает осмотр. Через `cell.shown` этого не выразить: там максимум по всем визитам.
+  const seenD = $derived(trackPath(cell.shown));
+  const liveD = $derived(trackPath(live));
 
   const title = $derived(
     `Кв. ${coordName(cell.x, cell.y)} · ${TERR[cell.terrain].name}` +
@@ -43,15 +74,11 @@
   <span class="ter"></span>
   <div class="heat" style:opacity={heat * 0.5}></div>
 
-  {#if cell.shown > 0 || isSearching}
-    <!-- GPS-трек: рисуется пропорционально coverage, анимируется при активном поиске -->
+  {#if seenD || liveD}
+    <!-- GPS-трек: тусклый — что уже обследовано, яркий — текущий проход -->
     <svg class="track" viewBox="0 0 100 100" aria-hidden="true">
-      <path
-        class:active={isSearching}
-        d="M6,12 L94,12 L94,30 L6,30 L6,48 L94,48 L94,66 L6,66 L6,84 L94,84"
-        stroke-dasharray={TRACK_LEN}
-        stroke-dashoffset={trackOffset}
-      />
+      {#if seenD}<path class="seen" d={seenD} />{/if}
+      {#if liveD}<path class="live" d={liveD} />{/if}
     </svg>
   {/if}
 
@@ -95,15 +122,15 @@
     stroke-width: 2px;
     stroke-linecap: round;
     stroke-linejoin: round;
-    /* пиксельная ширина линии не зависит от масштаба карты */
+    /* пиксельная ширина линии не зависит от масштаба карты. ВНИМАНИЕ: из-за этого штрих
+       считается в экранных пикселях — dash-заливку по проценту сюда возвращать нельзя,
+       длину прорисованной части задаёт сам `d` (см. trackPath). */
     vector-effect: non-scaling-stroke;
-    /* покрытие обновляется раз в шаг симуляции — переход длится ровно шаг (--move-ms),
-       наследуется от .gridwrap; иначе трек рисуется рывками */
-    transition: stroke-dashoffset var(--move-ms, 490ms) linear;
+    /* Перехода нет: `d` пересчитывается каждый кадр по game.tNow, как и позиции отрядов. */
   }
 
-  /* Активный поиск: более яркий цвет + пульс */
-  .track path.active {
+  /* Идущий прямо сейчас проход: ярче + пульс */
+  .track path.live {
     stroke: rgba(30, 115, 245, 0.85);
     animation: track-pulse 1.8s ease-in-out infinite;
   }
@@ -114,7 +141,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .track path        { transition: none; }
-    .track path.active { animation: none; }
+    .track path.live { animation: none; }
   }
 </style>
