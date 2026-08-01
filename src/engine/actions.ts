@@ -1,6 +1,6 @@
 import type { Game, Unit, Cell, Sink, ActionResult, UnitType, BuildKey, Verdict, Mission, Pt } from './types';
 import {
-  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, RECON_MIN, lvl, W, H,
+  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, EXP_LVL, RECON_MIN, lvl, W, H,
 } from './constants';
 import { coordName, gv, fmtDur } from './util';
 import {
@@ -114,6 +114,15 @@ export function actBuild(g: Game, key: BuildKey, emit: Sink): ActionResult {
   const b = BUILD[key];
   const cur = g.buildings[key];
   if (cur >= b.max) return fail('maxed');
+  const req = b.requires?.[cur + 1];
+  if (req) {
+    for (const [rk, rl] of Object.entries(req) as [BuildKey, number][]) {
+      if (g.buildings[rk] < rl) {
+        emit({ kind: 'toast', text: `Сначала нужен «${BUILD[rk].name}» ур. ${rl}`, tone: 'bad' });
+        return fail('requires');
+      }
+    }
+  }
   const cost = b.costs[cur + 1];
   if (g.funds < cost) { emit({ kind: 'toast', text: 'Не хватает средств', tone: 'bad' }); return fail('funds'); }
   g.funds -= cost; g.spent += cost;
@@ -190,7 +199,7 @@ export function actMark(g: Game, id: number, v: Verdict, emit: Sink): ActionResu
 
 export function actExpertise(g: Game, id: number, emit: Sink): ActionResult {
   if (g.over) return fail('case-over');
-  if (g.buildings.carto < 1) { emit({ kind: 'toast', text: 'Нужен картограф', tone: 'bad' }); return fail('no-carto'); }
+  if (g.buildings.tent < EXP_LVL) { emit({ kind: 'toast', text: 'Анализ улик доступен со штаба ур. 3', tone: 'bad' }); return fail('no-lab'); }
   const c = g.clues.find(x => x.id === id);
   if (!c || c.exp) return fail('n/a');
   if (g.funds < EXPCOST) { emit({ kind: 'toast', text: 'Не хватает средств на экспертизу', tone: 'bad' }); return fail('funds'); }

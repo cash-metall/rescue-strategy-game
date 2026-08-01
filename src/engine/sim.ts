@@ -61,18 +61,19 @@ export function simMinute(g: Game, emit: Sink): void {
   for (const u of g.units) {
     if (g.over || g.quest) return;
     stepUnit(g, u, emit);
+    revealUnderUnit(g, u);
   }
   // экспертиза
   g.expRuns = g.expRuns.filter(r => {
     if (g.t >= r.tEnd) { finishExpertise(g, r.id, emit); return false; }
     return true;
   });
-  while (g.expQueue.length && g.expRuns.length < EXPS[g.buildings.carto]) {
+  while (g.expQueue.length && g.expRuns.length < EXPS[g.buildings.tent]) {
     const id = g.expQueue.shift()!;
     const c = clueById(g, id);
     if (!c) continue;
     c.exp = 'run';
-    g.expRuns.push({ id, tEnd: g.t + EXPT[g.buildings.carto] });
+    g.expRuns.push({ id, tEnd: g.t + EXPT[g.buildings.tent] });
   }
   // штабные события
   if (g.t >= g.nextEvent) { randomEvent(g, emit); g.nextEvent = g.t + ri(200, 340); }
@@ -100,6 +101,15 @@ function busyCheck(g: Game, emit: Sink): void {
     }
   }
   if (hit) emit({ kind: 'toast', text: `🧰 До 18:00 недоступны: ${hit} ${plural(hit, 'отряд', 'отряда', 'отрядов')}` });
+}
+
+/** Туман: клетка раскрывается, когда в неё входит группа (в т.ч. транзитом по маршруту). */
+function revealUnderUnit(g: Game, u: Unit): void {
+  if (!u.mission) return;
+  const f = unitFloat(g, u);
+  if (!f) return;
+  const x = Math.round(f.x), y = Math.round(f.y);
+  if (x >= 0 && x < W && y >= 0 && y < H) g.map[y][x].revealed = true;
 }
 
 export function stepUnit(g: Game, u: Unit, emit: Sink): void {
@@ -286,6 +296,8 @@ export function doSearchMinute(g: Game, u: Unit, emit: Sink): void {
   const dc = m.swept - before;
   c.coverage = Math.max(c.coverage, m.swept);
   c.touched = true;
+  c.revealed = true;
+  c.searchedEff = detectEff(u);   // картограф ур. 3 покажет качество осмотра по квадрату
   if (m.gps) c.shown = Math.max(c.shown, c.coverage);
   // проверенные наводки гаснут
   for (const s of g.sightings) if (!s.checked && s.x === c.x && s.y === c.y) s.checked = true;
@@ -525,6 +537,11 @@ export function arrive(g: Game, u: Unit, emit: Sink): void {
     for (const o of found) createClue(g, u, o, m, !m.gps);
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back}: ${found.length} ${plural(found.length, 'находка', 'находки', 'находок')}`, tone: 'good' });
     pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, доставлено находок: ${found.length}`, 'good');
+  } else if (g.buildings.radio >= RADIO_LIVE_LVL) {
+    // Рация ур. ≥ 2: находки (если были) уже переданы по рации в поле, на возвращении их не
+    // дублируем и не пишем «без находок» — просто отмечаем прибытие.
+    emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back} в штаб` });
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере`);
   } else {
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back} без находок` });
     pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, находок нет`);

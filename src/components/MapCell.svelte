@@ -55,11 +55,15 @@
   const seenD = $derived(trackPath(cell.shown));
   const liveD = $derived(trackPath(live));
 
-  const title = $derived(
-    `Кв. ${coordName(cell.x, cell.y)} · ${TERR[cell.terrain].name}` +
-    (targetable(cell) ? ` · осмотрено ${Math.round(cell.shown)}%` : '') +
-    (mark?.sight ? (mark.sight === 'human' ? ' · возможная цель: человек' : ' · возможная цель на снимке') : '') +
-    (far ? ' · вне радиуса связи' : '')
+  // Туман войны: до картографа ур. 1 нераскрытые клетки скрыты (тип неизвестен).
+  const fog = $derived(game.g.buildings.carto === 0 && !cell.revealed);
+
+  const title = $derived(fog
+    ? `Кв. ${coordName(cell.x, cell.y)} · местность неизвестна`
+    : `Кв. ${coordName(cell.x, cell.y)} · ${TERR[cell.terrain].name}` +
+      (targetable(cell) ? ` · осмотрено ${Math.round(cell.shown)}%` : '') +
+      (mark?.sight ? (mark.sight === 'human' ? ' · возможная цель: человек' : ' · возможная цель на снимке') : '') +
+      (far ? ' · вне радиуса связи' : '')
   );
 
   function onKey(e: KeyboardEvent) {
@@ -67,12 +71,16 @@
   }
 </script>
 
-<div class="cell t-{cell.terrain}" class:far {title}
+<div class="cell t-{cell.terrain}" class:far class:fog {title}
      role="button" tabindex="-1"
      data-cx={cell.x} data-cy={cell.y}
      onkeydown={onKey}>
-  <span class="ter"></span>
-  <div class="heat" style:opacity={heat * 0.5}></div>
+  {#if fog}
+    <span class="fogq" aria-hidden="true">?</span>
+  {:else}
+    <span class="ter"></span>
+    <div class="heat" style:opacity={heat * 0.5}></div>
+  {/if}
 
   {#if seenD || liveD}
     <!-- GPS-трек: тусклый — что уже обследовано, яркий — текущий проход -->
@@ -94,6 +102,13 @@
 </div>
 
 <style>
+  /* Туман войны: серый квадрат с серым «?», топознак и цвет местности скрыты */
+  .cell.fog { background: #b7b3a8 !important; }
+  .fogq {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #8f8b80; font-weight: 700; font-size: 22px; line-height: 1;
+  }
+
   /* Наводка «возможная цель» — маркер коптера/телефонного звонка, не улика */
   .sight { font-size: 13px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .55)); }
   .sight.hum { animation: sight-pulse 1.6s ease-in-out infinite; }

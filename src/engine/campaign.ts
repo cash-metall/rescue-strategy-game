@@ -4,7 +4,7 @@ import { clamp } from './util';
 
 export function DEFAULT_CAMPAIGN(): Campaign {
   return {
-    buildings: { tent: 1, radio: 0, carto: 0, rest: 0, train: 0 },
+    buildings: { tent: 1, radio: 1, carto: 0, rest: 0, train: 0 },
     roster: [
       { type: 'foot', name: 'Лиса-1', level: 1 },
       { type: 'foot', name: 'Лиса-2', level: 1 },

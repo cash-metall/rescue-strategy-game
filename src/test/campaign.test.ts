@@ -16,8 +16,8 @@ describe('кампания: перенос штаба между делами', 
 
     const g: Game = newGame(campaign);
     g.funds = 100000;
-    actBuild(g, 'radio', noop);               // radio 1
-    actBuild(g, 'radio', noop);               // radio 2
+    actBuild(g, 'radio', noop);               // radio 1 → 2
+    actBuild(g, 'radio', noop);               // radio 2 → 3
     actBuild(g, 'tent', noop);                // tent 2
     actBuild(g, 'train', noop);               // train 1
     actHire(g, 'foot', noop);                 // ростер 3
@@ -44,7 +44,7 @@ describe('кампания: перенос штаба между делами', 
     // следующее дело из сохранённой кампании
     const g2 = newGame(campaign);
 
-    expect(g2.buildings.radio).toBe(2);
+    expect(g2.buildings.radio).toBe(3);
     expect(g2.buildings.tent).toBe(2);
     expect(g2.buildings.train).toBe(1);
     expect(g2.units.length).toBe(beforeUnits);
@@ -66,7 +66,7 @@ describe('кампания: перенос штаба между делами', 
     g.funds = 100000;
     actBuild(g, 'train', noop); actBuild(g, 'train', noop); actBuild(g, 'train', noop);
     expect(g.buildings.train).toBe(3);
-    actBuild(g, 'tent', noop);           // tent 2 — открывает «Ветер»
+    actBuild(g, 'tent', noop); actBuild(g, 'tent', noop);  // tent 3 — открывает «Ветер»
     actHire(g, 'wind', noop);
 
     // пешая: 1 → 4 (каждое обучение забирает её из дела, поэтому возвращаем в строй руками)
@@ -107,7 +107,7 @@ describe('кампания: перенос штаба между делами', 
 
     const def = resetCampaign(kv);
     expect(kv.getItem(SAVE_KEY)).toBeNull();
-    expect(def.buildings.radio).toBe(0);
+    expect(def.buildings.radio).toBe(1);
     expect(def.buildings.tent).toBe(1);
     expect(def.roster.length).toBe(2);
     expect(def.stats).toEqual({ alive: 0, dead: 0, missing: 0 });
@@ -134,8 +134,8 @@ describe('кампания: перенос штаба между делами', 
       stats: { alive: 'x', dead: 2, missing: null },
     }));
     const c = loadCampaign(kv);
-    expect(c.buildings.tent).toBe(3);        // клампится к BUILD.tent.max
-    expect(c.buildings.radio).toBe(0);       // нечисло → дефолт
+    expect(c.buildings.tent).toBe(4);        // клампится к BUILD.tent.max
+    expect(c.buildings.radio).toBe(1);       // нечисло → дефолт (радио теперь со старта ур. 1)
     expect(c.buildings.carto).toBe(0);       // отрицательное → 0
     expect(c.roster.length).toBe(2);         // неизвестный тип выброшен
     expect(c.roster[0].level).toBe(MAXLVL);  // уровень клампится

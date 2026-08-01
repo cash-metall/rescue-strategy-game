@@ -40,6 +40,10 @@ interface Node { cost: number; maxCell: number; steps: number; prev: number }
  * иначе на однородной карте маршрут дёргался бы между эквивалентными вариантами.
  */
 export function findPath(g: Game, from: Pt, to: Pt, mover: Mover, level = 1): PathResult {
+  // До картографа ур. 2 маршрут строится «вслепую»: цена клеток равная (кратчайший по числу
+  // шагов), озеро всё равно непроходимо. С ур. 2 — настоящий дешёвый путь по цене местности.
+  const flat = g.buildings.carto < 2;
+  const stepCost = (terr: Terrain): number => (flat ? 1 : cellCost(terr, mover));
   const idx = (x: number, y: number) => y * W + x;
   const N = W * H;
   const nodes: (Node | null)[] = new Array(N).fill(null);
@@ -77,10 +81,11 @@ export function findPath(g: Game, from: Pt, to: Pt, mover: Mover, level = 1): Pa
         const a = g.map[cy][cx + dx].terrain, b = g.map[cy + dy][cx].terrain;
         if (!passable(a, mover, level) && !passable(b, mover, level)) continue;
       }
-      const step = cellCost(terr, mover) * len;
+      const cc = stepCost(terr);
+      const step = cc * len;
       const cand: Node = {
         cost: curNode.cost + step,
-        maxCell: Math.max(curNode.maxCell, cellCost(terr, mover)),
+        maxCell: Math.max(curNode.maxCell, cc),
         steps: curNode.steps + 1,
         prev: cur,
       };
