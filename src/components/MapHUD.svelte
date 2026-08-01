@@ -6,7 +6,6 @@
   const s       = $derived(g.victim.strength);
   const barCls  = $derived(s < 35 ? 'crit' : s < 60 ? 'warn' : '');
   const night   = $derived(isNight(g));
-  const canHeat = $derived(g.buildings.carto >= 1);
 
   let settingsOpen = $state(false);
   const closeSettings = () => { settingsOpen = false; };
@@ -59,13 +58,6 @@
       <button class="sbtn" class:on={!game.paused && game.timeScale === 2} onclick={() => game.setSpeed(2)}>2×</button>
       <button class="sbtn" class:on={!game.paused && game.timeScale === 4} onclick={() => game.setSpeed(4)}>4×</button>
     </div>
-    <!-- Тепловая карта -->
-    <button class="smitem" class:on={g.ui.heat} disabled={!canHeat}
-            title={canHeat ? 'Карта вероятности' : 'Требуется картограф'}
-            onclick={() => { game.toggleHeat(); closeSettings(); }}>
-      🔥 Карта вероятности
-    </button>
-    <div class="s-div"></div>
     <button class="smitem" onclick={() => { game.openModal('settings'); closeSettings(); }}>
       ⚙ Штаб и прогресс
     </button>

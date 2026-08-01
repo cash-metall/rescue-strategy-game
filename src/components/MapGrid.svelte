@@ -450,13 +450,17 @@
     {/each}
   </div>
 
-  <!-- Кнопка сброса зума -->
-  <button class="resetbtn" onclick={resetView} title="Вписать карту в экран">⊞</button>
+  <!-- Кнопки карты: тепловая карта вероятности + сброс зума -->
+  {#if g.buildings.carto >= 2}
+    <button class="mapbtn heatbtn" class:on={g.ui.heat} onclick={() => game.toggleHeat()}
+            title="Карта вероятности">🔥</button>
+  {/if}
+  <button class="mapbtn resetbtn" onclick={resetView} title="Вписать карту в экран">⊞</button>
 </div>
 
 <style>
-  .resetbtn {
-    position: absolute; bottom: 10px; right: 10px; z-index: 10;
+  .mapbtn {
+    position: absolute; bottom: 10px; z-index: 10;
     width: 34px; height: 34px;
     background: rgba(10, 18, 12, 0.72);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -466,7 +470,10 @@
     transition: background .15s, color .15s;
     pointer-events: all;
   }
-  .resetbtn:hover { background: rgba(20, 35, 22, 0.88); color: #fff; }
+  .mapbtn:hover { background: rgba(20, 35, 22, 0.88); color: #fff; }
+  .resetbtn { right: 10px; }
+  .heatbtn  { right: 52px; filter: grayscale(1) opacity(.7); }
+  .heatbtn.on { filter: none; background: rgba(60, 30, 10, 0.82); border-color: var(--amber); }
 
   .mapwrap {
     flex: 1; overflow: hidden; position: relative;

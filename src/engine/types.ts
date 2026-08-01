@@ -53,6 +53,8 @@ export interface Cell {
   shown: number;      // отображаемое покрытие (при gpsDead отстаёт от coverage)
   objects: MapObject[];
   touched?: boolean;
+  revealed?: boolean;    // клетка выведена из тумана (карта видна при картографе ур. 0)
+  searchedEff?: number;  // detectEff последней осматривавшей группы (картограф ур. 3)
 }
 
 // Событие на задаче: инцидент или нейтральная история.

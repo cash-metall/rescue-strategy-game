@@ -1,7 +1,7 @@
 import type { Game, Unit, Cell, Clue, UnitType, Pt, Mission } from './types';
 import { cheb, dist, clamp } from './util';
 import {
-  W, H, TYPES, SMOD, NIGHT, WEATHER, RANGE, COVER_BASE, lvl, RESTM, REST_MULT,
+  W, H, TYPES, SMOD, NIGHT, WEATHER, RANGE, COVER_BASE, lvl, RESTM_DAY, RESTM_NIGHT, REST_MULT,
   MISSCAP, TENTCAP, WIND_PASSENGERS,
 } from './constants';
 import { findPath, moverOf, passable } from './path';
@@ -86,7 +86,9 @@ export function searchEff(g: Game, u: Unit, cell: Cell): number {
 }
 
 export const restRate = (g: Game, u: Unit): number =>
-  (u.type === 'drone' ? 1.4 : 0.45) * RESTM[g.buildings.rest] * REST_MULT[u.type];
+  (u.type === 'drone' ? 1.4 : 0.45)
+  * (isNight(g) ? RESTM_NIGHT : RESTM_DAY)[g.buildings.rest]
+  * REST_MULT[u.type];
 
 // --- Поездка ---
 
@@ -166,6 +168,9 @@ export function sendBlock(g: Game, u: Unit, cell: Cell): string | null {
   if (u.type === 'drone') {
     if (cell.terrain === 'dense') return 'Под кронами чащи с воздуха ничего не видно';
     if (isNight(g) && u.level !== 2) return u.level >= 3 ? 'Вертолёт летает только днём' : 'Коптер с камерой летает только днём';
+  } else if (isNight(g) && g.buildings.tent < 2) {
+    // До штаба ур. 2 ночные выходы наземных групп запрещены (коптер — по своей логике выше).
+    return 'Ночью группы не выходят — нужен штаб ур. 2';
   }
   if (!passable(cell.terrain, moverOf(u.type), u.level)) return 'Туда не добраться';
   return null;

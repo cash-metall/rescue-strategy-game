@@ -55,11 +55,15 @@
   const seenD = $derived(trackPath(cell.shown));
   const liveD = $derived(trackPath(live));
 
-  const title = $derived(
-    `Кв. ${coordName(cell.x, cell.y)} · ${TERR[cell.terrain].name}` +
-    (targetable(cell) ? ` · осмотрено ${Math.round(cell.shown)}%` : '') +
-    (mark?.sight ? (mark.sight === 'human' ? ' · возможная цель: человек' : ' · возможная цель на снимке') : '') +
-    (far ? ' · вне радиуса связи' : '')
+  // Туман войны: до картографа ур. 1 нераскрытые клетки скрыты (тип неизвестен).
+  const fog = $derived(game.g.buildings.carto === 0 && !cell.revealed);
+
+  const title = $derived(fog
+    ? `Кв. ${coordName(cell.x, cell.y)} · местность неизвестна`
+    : `Кв. ${coordName(cell.x, cell.y)} · ${TERR[cell.terrain].name}` +
+      (targetable(cell) ? ` · осмотрено ${Math.round(cell.shown)}%` : '') +
+      (mark?.sight ? (mark.sight === 'human' ? ' · возможная цель: человек' : ' · возможная цель на снимке') : '') +
+      (far ? ' · вне радиуса связи' : '')
   );
 
   function onKey(e: KeyboardEvent) {

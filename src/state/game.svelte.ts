@@ -68,7 +68,7 @@ class GameStore {
   private overHandled = false;
   private acc = 0;                     // накопленные игровые минуты (дробные)
 
-  heat = $derived(this.g.ui.heat && this.g.buildings.carto >= 1 ? heatScores(this.g) : null);
+  heat = $derived(this.g.ui.heat && this.g.buildings.carto >= 2 ? heatScores(this.g) : null);
 
   private sink: Sink = (f: Fx) => {
     if (f.kind === 'toast') fx.push(f.text, f.tone);

@@ -78,6 +78,11 @@ export function tryGen(camp: Campaign): Game | null {
   if (!campCell) return null;
   g.hq = { x: campCell.x, y: campCell.y };
   map[g.hq.y][g.hq.x].terrain = 'base';
+  // Туман войны: со старта раскрыт лагерь и соседние по Чебышёву клетки (картограф ур. 0).
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const rx = g.hq.x + dx, ry = g.hq.y + dy;
+    if (rx >= 0 && rx < W && ry >= 0 && ry < H) map[ry][rx].revealed = true;
+  }
   g.drainBase = 100 / (1600 + 150 * dist(g.hq, g.victim));
   // --- артефакты на маршруте ---
   // Текст артефакта НЕ содержит давности: её читает только ГСН (см. createClue).

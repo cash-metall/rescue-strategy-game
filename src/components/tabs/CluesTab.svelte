@@ -1,7 +1,7 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
   import { game } from '../../state/game.svelte';
-  import { EXPCOST, EXPREWARD, EXPT, coordName, fmtTimeAt, effMark, dirName, dirArrow } from '../../engine';
+  import { EXPCOST, EXPREWARD, EXPT, EXP_LVL, coordName, fmtTimeAt, effMark, dirName, dirArrow } from '../../engine';
 
   const g = $derived(game.g);
 
@@ -18,7 +18,7 @@
   {#each g.clues as c (c.id)}
     {@const m = effMark(c)}
     {@const cls = c.verdict === 'real' ? 'vreal' : m === 'real' ? 'mreal' : m === 'junk' ? 'mjunk' : ''}
-    {@const canExp = g.buildings.carto >= 1 && !c.exp}
+    {@const canExp = g.buildings.tent >= EXP_LVL && !c.exp}
     <div class="card clue {cls}" in:slide={{ duration: known.has(c.id) ? 0 : 220 }}>
       <div class="meta">
         {c.noPos ? 'без координат' : 'кв. ' + coordName(c.x, c.y)} · {fmtTimeAt(c.tFound)}{c.noPos ? ' · 🛰️ навигатор сел' : ''}
@@ -38,9 +38,9 @@
                   onclick={(e) => { game.mark(c.id, 'junk'); (e.currentTarget as HTMLElement).blur(); }}>🗑 Мусор</button>
         </span>
         {#if canExp}
-          <button class="btn mini" disabled={g.funds < EXPCOST} onclick={() => game.expertise(c.id)}>🔬 Экспертиза ({EXPT[g.buildings.carto]} мин · {EXPCOST} ₽)</button>
-        {:else if g.buildings.carto < 1 && !c.verdict}
-          <span class="stTxt">🔬 нужен картограф</span>
+          <button class="btn mini" disabled={g.funds < EXPCOST} onclick={() => game.expertise(c.id)}>🔬 Экспертиза ({EXPT[g.buildings.tent]} мин · {EXPCOST} ₽)</button>
+        {:else if g.buildings.tent < EXP_LVL && !c.verdict}
+          <span class="stTxt">🔬 анализ улик — со штаба ур. 3</span>
         {/if}
       </div>
     </div>
