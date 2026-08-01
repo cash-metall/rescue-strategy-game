@@ -94,6 +94,7 @@ h1, h2, h3 { font-family: var(--disp); text-transform: uppercase; letter-spacing
 /* ===== Панели / карточки / вкладки ===== */
 .card { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 9px 11px; margin-bottom: 8px; }
 .card h3 { font-size: 13px; color: var(--txt); display: flex; align-items: center; gap: 7px; }
+.ic { flex-shrink: 0; vertical-align: -3px; object-fit: contain; }
 .card .lvl { color: var(--amber); font-family: var(--mono); font-size: 11px; }
 .card p { color: var(--mut); font-size: 12px; margin: 4px 0; }
 .card .eff { color: var(--txt); font-size: 12px; }

@@ -5,6 +5,7 @@
     cellAt, inRange, detectEff, searchEst, planTrip, missionSlots, sendBlock,
     available, freeWinds, lvl,
   } from '../engine';
+  import Icon from './Icon.svelte';
 
   const g = $derived(game.g);
   const sel = $derived(g.ui.sel);
@@ -54,7 +55,7 @@
             <label>
               <input type="checkbox" checked={g.ui.selUnits.has(u.id) && !off} disabled={off}
                      onchange={(e) => game.toggleUnit(u.id, (e.currentTarget as HTMLInputElement).checked)} />
-              <span class="nm">{T.icon} {u.name} <span class="lvl">{L.name}</span></span>
+              <span class="nm"><Icon src={T.svg} size={16} /> {u.name} <span class="lvl">{L.name}</span></span>
               <span class="inf">
                 {#if block}⛔ {block}
                 {:else if tired}нужен отдых

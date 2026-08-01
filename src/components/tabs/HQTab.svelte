@@ -1,6 +1,7 @@
 <script lang="ts">
   import { game } from '../../state/game.svelte';
   import { BUILD, TYPES, TENTCAP, awayCount, type BuildKey, type UnitType } from '../../engine';
+  import Icon from '../Icon.svelte';
 
   const g = $derived(game.g);
   const buildKeys = Object.keys(BUILD) as BuildKey[];
@@ -19,7 +20,7 @@
   {@const b = BUILD[key]}
   {@const cur = g.buildings[key]}
   <div class="card">
-    <h3>{b.icon} {b.name} <span class="lvl">ур. {cur}/{b.max}</span></h3>
+    <h3><Icon src="hq/{key}.svg" /> {b.name} <span class="lvl">ур. {cur}/{b.max}</span></h3>
     <p class="eff">{b.lvls[cur] || '—'}</p>
     {#if cur < b.max}
       {@const cost = b.costs[cur + 1]}
@@ -37,7 +38,7 @@
   {@const locked = g.buildings.tent < T.unlock}
   {@const full = g.units.length >= TENTCAP[g.buildings.tent]}
   <div class="card">
-    <h3>{T.icon} {T.name}</h3>
+    <h3><Icon src={T.svg} /> {T.name}</h3>
     <p>{T.desc}</p>
     <div class="row">
       <span class="stTxt">

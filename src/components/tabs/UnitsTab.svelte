@@ -4,6 +4,7 @@
     TYPES, TRAINCOST, MAXLVL, coordName, fmtDur, fmtTime, gv, fatShown, fatLabel,
     lvl, trainTarget, available, isBusy, needsRest, cellAt, coverRate, type Unit,
   } from '../../engine';
+  import Icon from '../Icon.svelte';
 
   const g = $derived(game.g);
 
@@ -50,7 +51,7 @@
     {@const canRecall = g.buildings.radio >= 3 && u.mission && u.status !== 'return' && u.type !== 'wind'}
     <div class="card" class:gone={!!u.away}>
       <h3>
-        {TYPES[u.type].icon} {u.name}
+        <Icon src={TYPES[u.type].svg} /> {u.name}
         <span class="lvl">{'★'.repeat(u.level)}{'☆'.repeat(MAXLVL - u.level)}</span>
       </h3>
       <p class="eff">{L.name} — {L.note}</p>
