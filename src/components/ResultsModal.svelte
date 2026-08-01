@@ -9,7 +9,13 @@
   const st = $derived(game.campaign.stats);
 
   function reset() {
-    if (confirm('Сбросить весь прогресс штаба и команд? Это необратимо.')) game.hardReset();
+    game.askConfirm({
+      title: 'Новая игра',
+      message: 'Весь прогресс штаба и команд будет удалён. Это необратимо.',
+      confirmLabel: 'Сбросить прогресс',
+      danger: true,
+      onConfirm: () => game.hardReset(),
+    });
   }
 </script>
 

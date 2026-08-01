@@ -9,9 +9,13 @@
   const gone = $derived(awayCount(g));
 
   function abandon() {
-    if (confirm('Поиски будут прекращены, пропавший останется ненайденным. Это нельзя отменить.\n\nСвернуть операцию?')) {
-      game.abandon();
-    }
+    game.askConfirm({
+      title: 'Свернуть операцию',
+      message: 'Поиски будут прекращены, пропавший останется ненайденным. Это нельзя отменить.',
+      confirmLabel: 'Свернуть поиски',
+      danger: true,
+      onConfirm: () => game.abandon(),
+    });
   }
 </script>
 

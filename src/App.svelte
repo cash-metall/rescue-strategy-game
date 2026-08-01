@@ -12,6 +12,7 @@
   import SettingsModal from './components/SettingsModal.svelte';
   import ResultsModal from './components/ResultsModal.svelte';
   import QuestModal from './components/QuestModal.svelte';
+  import ConfirmModal from './components/ConfirmModal.svelte';
 
   onMount(() => {
     // Игровое время течёт по реальному прошедшему времени (game.tick сам копит минуты).
@@ -121,6 +122,7 @@
 <Toasts />
 <ResultsFab />
 {#if modal === 'intro'}<IntroModal />{:else if modal === 'settings'}<SettingsModal />{:else if modal === 'results'}<ResultsModal />{:else if modal === 'quest'}<QuestModal />{/if}
+{#if game.confirmReq}<ConfirmModal />{/if}
 
 <style>
   /* ===== Мобайл (по умолчанию) ===== */

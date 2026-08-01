@@ -22,6 +22,15 @@ function seed(camp: Campaign): Game {
 // Модалки — эфемерное состояние UI (пауза при открытии).
 export type ModalKind = 'intro' | 'settings' | 'results' | 'quest' | null;
 
+/** Запрос подтверждения действия — игровая замена браузерному `confirm()`. */
+export interface ConfirmReq {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+}
+
 // ── Течение времени ──────────────────────────────────────────────────────────
 // Игровое время отвязано от частоты кадров: цикл вызывает tick(dt) каждый кадр,
 // накопитель копит игровые минуты по реальному прошедшему времени × timeScale.
@@ -41,6 +50,7 @@ class GameStore {
   g = $state<Game>(seed(this.campaign));
   paused = $state(true);
   modal = $state<ModalKind>('intro');  // первый брифинг показывается на старте
+  confirmReq = $state<ConfirmReq | null>(null);  // открытое окно подтверждения действия
   introStart = $state(true);           // интро открыто как начало дела (true) или как справка (false)
   sheet = $state<'none' | 'cell' | 'tabs'>('none'); // мобильные bottom-sheet (на десктопе игнорируется)
   resultsFab = $state(false);          // плавающая кнопка «вернуться к итогам»
@@ -74,7 +84,7 @@ class GameStore {
   tick(dtMs: number): void {
     // На паузе накопитель НЕ обнуляем: копить всё равно нечему (мы вышли раньше), зато
     // остаток не теряется и отряды замирают ровно там, где стояли, без отскока назад.
-    if (this.paused || this.g.over || this.modal) return;
+    if (this.paused || this.g.over || this.modal || this.confirmReq) return;
     this.acc += (Math.min(dtMs, MAX_FRAME_MS) / 1000) * GAME_MIN_PER_SEC * this.timeScale;
     let steps = 0;
     while (this.acc >= 1 && steps < MAX_STEPS) {
@@ -136,6 +146,14 @@ class GameStore {
   }
   showMap(): void { this.modal = null; this.resultsFab = true; }
   backToResults(): void { this.resultsFab = false; this.openModal('results'); }
+
+  // --- подтверждение действия (игровая замена confirm()) ---
+  askConfirm(req: ConfirmReq): void { this.confirmReq = req; }
+  resolveConfirm(ok: boolean): void {
+    const req = this.confirmReq;
+    this.confirmReq = null;
+    if (ok) req?.onConfirm();
+  }
 
   // --- действия игрока ---
   send(): void { if (actSend(this.g, this.sink).ok) this.sheet = 'none'; }

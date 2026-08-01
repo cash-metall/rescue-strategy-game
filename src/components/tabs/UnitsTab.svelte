@@ -34,9 +34,12 @@
 
   function askTrain(u: Unit, target: number) {
     const L = lvl(u.type, target);
-    const msg = `${u.name} → уровень ${target} (${L.name}).\n\n${L.note}\n\n`
-      + 'Внимание: группа немедленно покинет этот поиск и станет доступна только в следующем деле. Продолжить?';
-    if (confirm(msg)) game.train(u.id);
+    game.askConfirm({
+      title: `${u.name} → уровень ${target}`,
+      message: `${L.name}.\n\n${L.note}\n\nГруппа немедленно покинет этот поиск и станет доступна только в следующем деле.`,
+      confirmLabel: 'Отправить на обучение',
+      onConfirm: () => game.train(u.id),
+    });
   }
 </script>
 
