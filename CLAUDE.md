@@ -74,7 +74,7 @@ src/
     + index.ts (барель)
   state/      game.svelte.ts (стор с рунами: g=$state, tick, действия, модалки, sheet), fx.svelte.ts (тосты)
   components/ MapHUD (шапка карты), MapGrid/MapCell, CellSheet, TabBar/TabPanel, tabs/*,
-              Modal + Intro/Settings/Results/Quest, Toasts, ResultsFab
+              Modal + Intro/Settings/Results/Quest/Confirm, Icon (SVG в панелях), Toasts, ResultsFab
   styles/     tokens.css (переменные), global.css (reset + язык карты/панелей/модалок, unscoped)
   test/       generation / autoplayer / campaign / mechanics / motion — vitest (52 теста)
 public/images/  SVG-ассеты (топознаки местности, юниты, штаб, маркеры)

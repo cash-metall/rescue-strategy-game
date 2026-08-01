@@ -98,6 +98,7 @@ campaign = $state<Campaign>(loadCampaign(kv))
 g        = $state<Game>(seed(this.campaign))
 paused   = $state(true)
 modal    = $state<ModalKind>('intro')   // 'intro' | 'settings' | 'results' | 'quest' | null
+confirmReq = $state<ConfirmReq | null>(null)  // окно подтверждения действия (замена confirm())
 introStart = $state(true)               // интро как начало дела (true) или как справка
 sheet    = $state<'none' | 'cell' | 'tabs'>('none')   // мобильные bottom-sheet
 resultsFab = $state(false)
@@ -160,9 +161,10 @@ onMount(() => {
 - Два клампа: `MAX_FRAME_MS = 250` обрезает `dt`, чтобы после сворачивания вкладки не прокрутить
   пачку минут разом; `MAX_STEPS = 240` — предохранитель на случай, если первый кламп когда-нибудь
   снимут.
-- `tick()` выходит сразу при `paused || g.over || modal` — модалка морозит время **самим фактом
-  открытия**, `paused` при этом не трогается. Накопитель `acc` при этом **не** сбрасывается: копить
-  всё равно нечему (вышли раньше), зато остаток не теряется и отряды замирают ровно там, где стояли.
+- `tick()` выходит сразу при `paused || g.over || modal || confirmReq` — модалка и окно подтверждения
+  морозят время **самим фактом открытия** (как раньше блокировал нативный `confirm()`), `paused` при
+  этом не трогается. Накопитель `acc` при этом **не** сбрасывается: копить всё равно нечему (вышли
+  раньше), зато остаток не теряется и отряды замирают ровно там, где стояли.
 - `setSpeed(s)` заодно снимает пузу (`paused = false`); `pause()` только ставит флаг, `timeScale`
   не сбрасывает — поэтому `MapHUD` возобновляет игру как `setSpeed(game.timeScale || 1)`.
 - `openModal` запоминает `pausedBeforeModal` только на переходе `null → открыто`, так что вторая
@@ -185,12 +187,14 @@ App
 │  └─ .side   → TabBar, .panelhost > TabPanel → HQTab|UnitsTab|CluesTab|CaseTab|LogTab
 │  └─ .backdrop            (только когда открыт sheet)
 ├─ Toasts, ResultsFab
-└─ IntroModal | SettingsModal | ResultsModal | QuestModal   (ровно одна, по game.modal)
+├─ IntroModal | SettingsModal | ResultsModal | QuestModal   (ровно одна, по game.modal)
+└─ ConfirmModal                                             (когда game.confirmReq != null, поверх всего)
 ```
 
-- **Пропсы принимают только два компонента**: `MapCell` (`cell, far, heat, mark, over, zoomed,
-  live`) и `Modal` (сниппет `children` + `onbackdrop?`). Все остальные импортируют синглтон
-  `game` напрямую — слоя prop-drilling нет.
+- **Пропсы принимают только три компонента**: `MapCell` (`cell, far, heat, mark, over, zoomed,
+  live`), `Modal` (сниппет `children` + `onbackdrop?`) и `Icon` (`src, alt?, size?` — инлайновая
+  SVG-иконка юнита/постройки в панелях). Все остальные импортируют синглтон `game` напрямую — слоя
+  prop-drilling нет.
 - `MapHUD` полностью заменил шапку: полоса состояния жертвы, левая пилюля (время, 🌙 ночью, погода,
   ♥ %), правая (₽ и шестерёнка) и поповер шестерёнки с ⏸/1×/2×/4×, «🔥 Карта вероятности»
   (заблокирована при `carto < 1`), «⚙ Штаб и прогресс», «? Справка».
@@ -225,6 +229,11 @@ App
   у движущегося отряда состав меняется на каждой границе, и смещение прыгало бы у него и у соседей.
 - `QuestModal` — мини-квест первой помощи: открывается, когда `g.quest` не пуст (пропавшего нашли
   живым после ухода медиков), и удерживает игру на паузе до последнего ответа.
+- `ConfirmModal` — игровая замена браузерному `confirm()`: рисуется поверх всего (`z-index: 200`),
+  когда `game.confirmReq != null`. Запрос ставят через `game.askConfirm({ title, message,
+  confirmLabel, danger?, onConfirm })`, ответ — `game.resolveConfirm(ok)` (по кнопке, фону или Esc);
+  колбэк `onConfirm` выполняется только при `ok`. Используется для обучения отряда, сворачивания
+  операции и сброса прогресса.
 
 ## Модель ввода на карте
 
