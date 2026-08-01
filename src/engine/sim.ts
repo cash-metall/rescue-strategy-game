@@ -537,6 +537,11 @@ export function arrive(g: Game, u: Unit, emit: Sink): void {
     for (const o of found) createClue(g, u, o, m, !m.gps);
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back}: ${found.length} ${plural(found.length, 'находка', 'находки', 'находок')}`, tone: 'good' });
     pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, доставлено находок: ${found.length}`, 'good');
+  } else if (g.buildings.radio >= RADIO_LIVE_LVL) {
+    // Рация ур. ≥ 2: находки (если были) уже переданы по рации в поле, на возвращении их не
+    // дублируем и не пишем «без находок» — просто отмечаем прибытие.
+    emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back} в штаб` });
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере`);
   } else {
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back} без находок` });
     pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, находок нет`);
