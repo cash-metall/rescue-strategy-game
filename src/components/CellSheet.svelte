@@ -10,6 +10,8 @@
   const g = $derived(game.g);
   const sel = $derived(g.ui.sel);
   const cell = $derived(sel ? cellAt(g, sel.x, sel.y) : null);
+  // Туман войны: до картографа ур. 1 нераскрытый квадрат — местность неизвестна.
+  const fog = $derived(!!cell && g.buildings.carto === 0 && !cell.revealed);
   const ready = $derived(g.units.filter(u => available(g, u) && u.type !== 'wind'));
   const cluesHere = $derived(sel ? g.clues.filter(c => c.x === sel.x && c.y === sel.y && !c.noPos) : []);
   const sightHere = $derived(sel ? g.sightings.filter(s => s.x === sel.x && s.y === sel.y && !s.checked) : []);
@@ -22,15 +24,17 @@
     <h3>Квадрат не выбран</h3>
     <p class="stTxt">Кликните по квадрату карты, чтобы отправить туда поисковую группу. 📍 — точка, где пропавшего видели в последний раз.</p>
   {:else}
-    <h3>Квадрат {coordName(sel.x, sel.y)} · {TERR[cell.terrain].name}</h3>
-    {#if cell.terrain === 'base'}
+    <h3>Квадрат {coordName(sel.x, sel.y)} · {fog ? 'местность неизвестна' : TERR[cell.terrain].name}</h3>
+    {#if fog}
+      <p class="stTxt">Квадрат в тумане — тип местности неизвестен. Отправьте сюда группу, чтобы разведать его (или улучшите картографа до ур. 1, чтобы открыть карту).</p>
+    {:else if cell.terrain === 'base'}
       <p class="stTxt">Это ваш лагерь. Здесь отряды отдыхают и сдают находки.</p>
     {:else if cell.terrain === 'lake'}
       <p class="stTxt">Открытая вода. Наземный поиск здесь невозможен.</p>
     {:else if !inRange(g, cell)}
       <p class="stTxt">⚠️ Вне радиуса связи. Улучшите радиостанцию, чтобы координировать поиск в этом квадрате.</p>
     {:else}
-      <p class="stTxt">Осмотрено: <b>{Math.round(cell.shown)}%</b>{#if sel.x === g.lkp.x && sel.y === g.lkp.y} · <span class="hl">📍 точка последнего контакта</span>{/if}{#if cluesHere.length} · находок здесь: <b>{cluesHere.length}</b>{/if}</p>
+      <p class="stTxt">Осмотрено: <b>{Math.round(cell.shown)}%</b>{#if g.buildings.carto >= 3 && cell.searchedEff != null} · качество осмотра <b>{Math.round(cell.searchedEff * 100)}%</b>{/if}{#if sel.x === g.lkp.x && sel.y === g.lkp.y} · <span class="hl">📍 точка последнего контакта</span>{/if}{#if cluesHere.length} · находок здесь: <b>{cluesHere.length}</b>{/if}</p>
 
       {#if sightHere.length}
         <div class="secH">Наводки</div>
