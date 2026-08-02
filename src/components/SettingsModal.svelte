@@ -45,4 +45,8 @@
     <button class="btn primary" onclick={() => game.closeModal()}>Закрыть</button>
     <button class="btn danger" onclick={reset}>Новая игра (сбросить прогресс)</button>
   </div>
+  <!-- ЧИТ (временно, для тестов): TODO убрать перед релизом -->
+  <div style="display:flex;justify-content:center;margin-top:10px">
+    <button class="btn mini" onclick={() => { g.funds += 1000; }}>🐞 +1000 ₽ (чит для тестов)</button>
+  </div>
 </Modal>
