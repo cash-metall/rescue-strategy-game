@@ -29,7 +29,7 @@
 
 <!-- ── Левая пилюля: время + погода + состояние ── -->
 <div class="pill left">
-  <span class="time" role="button" tabindex="0" onclick={cheat}
+  <span class="time cheat" role="button" tabindex="0" onpointerdown={cheat}
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') cheat(); }}>{fmtTime(g.t)}{night ? ' 🌙' : ''}</span>
   <span class="sep">·</span>
   <span>{WEATHER[g.weather].icon}</span>
@@ -102,6 +102,7 @@
   .pill.right { right: 8px; gap: 8px; }
 
   .time { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+  .cheat { cursor: pointer; touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   .sep  { color: rgba(255,255,255,.3); font-size: 10px; }
   .funds { font-family: var(--mono); font-size: 13px; font-weight: 600; }
   .str  { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--green); }
