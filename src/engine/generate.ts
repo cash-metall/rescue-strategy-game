@@ -154,13 +154,18 @@ export const junkTemplates: Array<() => Tpl> = [
 
 const DOG_NAMES = ['Альма', 'Грей', 'Байкал', 'Веста', 'Тайга', 'Норд', 'Ирма'];
 
-export function addUnit(g: Game, type: UnitType): void {
+/** Единый генератор позывного: инкрементит счётчик типа и собирает имя. */
+export function nextCallSign(g: Game, type: UnitType): string {
   g.nameCnt[type]++;
   const n = g.nameCnt[type];
-  const name = type === 'foot' ? 'Лиса-' + n
+  return type === 'foot' ? 'Лиса-' + n
     : type === 'dog' ? `Кинолог-${n} · ${DOG_NAMES[(n - 1) % DOG_NAMES.length]}`
       : type === 'wind' ? 'Ветер-' + n
         : 'Коптер-' + n;
+}
+
+export function addUnit(g: Game, type: UnitType): void {
+  const name = nextCallSign(g, type);
   g.units.push({
     id: g.unitId++, type, gen: TYPES[type].gen, name, level: 1, fatigue: 0,
     status: 'idle', phaseStart: 0, phaseEnd: 0, mission: null,
