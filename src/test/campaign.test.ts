@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  newGame, simMinute, actBuild, actHire, actTrain, foundVictim, finalizeOver,
-  loadCampaign, saveCampaign, resetCampaign, memoryKV, SAVE_KEY, MAXLVL,
+  newGame, simMinute, actBuild, actHire, actTrain, actRetrain, foundVictim, finalizeOver,
+  loadCampaign, saveCampaign, resetCampaign, memoryKV, SAVE_KEY, MAXLVL, TYPES,
   type Fx, type Game, type CampStats,
 } from '../engine';
 
@@ -84,6 +84,50 @@ describe('кампания: перенос штаба между делами', 
     const wind = g.units.find(u => u.type === 'wind')!;
     for (let i = 0; i < 5; i++) { actTrain(g, wind.id, noop); wind.away = null; }
     expect(wind.level).toBe(3);
+  });
+
+  it('переобучение меняет специализацию: новый тип 1 ур. с новым позывным в следующем деле', () => {
+    const kv = memoryKV();
+    const g = newGame(loadCampaign(kv));
+    g.funds = 100000;
+    // учебный центр до ур. 4 (переобучение) и штаб до ур. 2 (кинологи)
+    actBuild(g, 'train', noop); actBuild(g, 'train', noop); actBuild(g, 'train', noop); actBuild(g, 'train', noop);
+    expect(g.buildings.train).toBe(4);
+    actBuild(g, 'tent', noop); // tent 2 — открывает кинологов
+
+    const foot = g.units.find(u => u.type === 'foot')!;
+    const oldName = foot.name;
+    const fundsBefore = g.funds;
+    actRetrain(g, foot.id, 'dog', noop);
+
+    // сразу в текущем деле: тип сменился, уровень 1, выбыла до конца дела, имя новое
+    expect(foot.type).toBe('dog');
+    expect(foot.level).toBe(1);
+    expect(foot.away).toBe('training');
+    expect(foot.name).not.toBe(oldName);
+    expect(g.funds).toBe(fundsBefore - TYPES.dog.cost); // цена = наём нового
+
+    // следующее дело: боец приходит уже кинологом 1 ур.
+    const camp = saveCampaign(kv, g, zero());
+    const g2 = newGame(camp);
+    expect(g2.units.some(u => u.name === foot.name && u.type === 'dog' && u.level === 1)).toBe(true);
+    expect(g2.units.some(u => u.name === oldName)).toBe(false);
+  });
+
+  it('переобучение закрыто без учебного центра ур. 4 и без разблокировки типа', () => {
+    const kv = memoryKV();
+    const g = newGame(loadCampaign(kv));
+    g.funds = 100000;
+    const foot = g.units.find(u => u.type === 'foot')!;
+
+    // учебка ур. 0 — переобучение недоступно
+    actRetrain(g, foot.id, 'dog', noop);
+    expect(foot.type).toBe('foot');
+
+    // учебка 4, но штаб ур.1 — коптер (unlock 4) недоступен
+    actBuild(g, 'train', noop); actBuild(g, 'train', noop); actBuild(g, 'train', noop); actBuild(g, 'train', noop);
+    actRetrain(g, foot.id, 'drone', noop);
+    expect(foot.type).toBe('foot');
   });
 
   it('три категории исходов пишутся раздельно', () => {

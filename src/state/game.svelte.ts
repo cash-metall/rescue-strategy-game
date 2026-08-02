@@ -1,7 +1,7 @@
 import { SvelteSet } from 'svelte/reactivity';
 import {
   newGame, simMinute, heatScores,
-  actSend, actBuild, actHire, actTrain, actRecall, actMark, actExpertise, selectCell,
+  actSend, actBuild, actHire, actTrain, actRetrain, actRecall, actMark, actExpertise, selectCell,
   actAbandon, actQuest,
   loadCampaign, saveCampaign, resetCampaign,
 } from '../engine';
@@ -51,6 +51,7 @@ class GameStore {
   paused = $state(true);
   modal = $state<ModalKind>('intro');  // первый брифинг показывается на старте
   confirmReq = $state<ConfirmReq | null>(null);  // открытое окно подтверждения действия
+  retrainId = $state<number | null>(null);       // id отряда в открытом окне переобучения
   introStart = $state(true);           // интро открыто как начало дела (true) или как справка (false)
   sheet = $state<'none' | 'cell' | 'tabs'>('none'); // мобильные bottom-sheet (на десктопе игнорируется)
   resultsFab = $state(false);          // плавающая кнопка «вернуться к итогам»
@@ -84,7 +85,7 @@ class GameStore {
   tick(dtMs: number): void {
     // На паузе накопитель НЕ обнуляем: копить всё равно нечему (мы вышли раньше), зато
     // остаток не теряется и отряды замирают ровно там, где стояли, без отскока назад.
-    if (this.paused || this.g.over || this.modal || this.confirmReq) return;
+    if (this.paused || this.g.over || this.modal || this.confirmReq || this.retrainId != null) return;
     this.acc += (Math.min(dtMs, MAX_FRAME_MS) / 1000) * GAME_MIN_PER_SEC * this.timeScale;
     let steps = 0;
     while (this.acc >= 1 && steps < MAX_STEPS) {
@@ -160,6 +161,12 @@ class GameStore {
   build(key: BuildKey): void { actBuild(this.g, key, this.sink); }
   hire(type: UnitType): void { actHire(this.g, type, this.sink); }
   train(id: number): void { actTrain(this.g, id, this.sink); }
+  openRetrain(id: number): void { this.retrainId = id; }
+  closeRetrain(): void { this.retrainId = null; }
+  retrain(type: UnitType): void {
+    if (this.retrainId == null) return;
+    if (actRetrain(this.g, this.retrainId, type, this.sink).ok) this.retrainId = null;
+  }
   recall(id: number): void { actRecall(this.g, id, this.sink); }
   mark(id: number, v: Verdict): void { actMark(this.g, id, v, this.sink); }
   expertise(id: number): void { actExpertise(this.g, id, this.sink); }

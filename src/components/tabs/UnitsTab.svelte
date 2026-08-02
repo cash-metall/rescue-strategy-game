@@ -1,7 +1,7 @@
 <script lang="ts">
   import { game } from '../../state/game.svelte';
   import {
-    TYPES, TRAINCOST, MAXLVL, coordName, fmtDur, fmtTime, gv, fatShown, fatLabel,
+    TYPES, TRAINCOST, RETRAIN_LVL, MAXLVL, coordName, fmtDur, fmtTime, gv, fatShown, fatLabel,
     lvl, trainTarget, available, isBusy, needsRest, cellAt, coverRate, type Unit,
   } from '../../engine';
   import Icon from '../Icon.svelte';
@@ -71,6 +71,9 @@
               <button class="btn mini" disabled={g.funds < TRAINCOST[target]} onclick={() => askTrain(u, target)}>
                 🎓 Обучить · {TRAINCOST[target]} ₽
               </button>
+            {/if}
+            {#if available(g, u) && g.buildings.train >= RETRAIN_LVL}
+              <button class="btn mini" onclick={() => game.openRetrain(u.id)}>🔄 Переобучить</button>
             {/if}
             {#if canRecall}
               <button class="btn mini danger" onclick={() => game.recall(u.id)}>📻 Отозвать</button>

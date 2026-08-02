@@ -1,13 +1,13 @@
 import type { Game, Unit, Cell, Sink, ActionResult, UnitType, BuildKey, Verdict, Mission, Pt } from './types';
 import {
-  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, EXP_LVL, RECON_MIN, lvl, W, H,
+  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, EXP_LVL, RETRAIN_LVL, RECON_MIN, lvl, W, H,
 } from './constants';
 import { coordName, gv, fmtDur } from './util';
 import {
   cellAt, unitById, targetable, inRange, activeMissions, available, sendBlock,
   planTrip, searchEst, freeWinds, windCapacity, windMinutes, isNight,
 } from './access';
-import { addUnit } from './generate';
+import { addUnit, nextCallSign } from './generate';
 import { pushLog, forceReturn, finalizeOver, setPhase } from './sim';
 import { rollEvent } from './events';
 import { ri, rf } from './rng';
@@ -175,6 +175,37 @@ export function actTrain(g: Game, id: number, emit: Sink): ActionResult {
   u.status = 'idle';
   pushLog(g, `🎓 ${u.name} ${gv(u, 'ушла', 'ушёл')} на обучение — уровень ${target} (${lvl(u.type, target).name}). В этом деле группа больше не выйдет.`, 'good');
   emit({ kind: 'toast', text: `🎓 ${u.name}: уровень ${target}, но группа покинула поиск`, tone: 'good' });
+  emit({ kind: 'save' });
+  return ok;
+}
+
+/**
+ * Переобучение: смена специализации. Как обучение — забирает группу из текущего дела; в следующем
+ * деле отряд возвращается НОВЫМ бойцом выбранного типа 1-го уровня с новым позывным. Цена = наём
+ * нового отряда этого типа. Личность меняем на месте — `saveCampaign` перенесёт её в ростер.
+ */
+export function actRetrain(g: Game, id: number, newType: UnitType, emit: Sink): ActionResult {
+  if (g.over) return fail('case-over');
+  if (g.buildings.train < RETRAIN_LVL) { emit({ kind: 'toast', text: 'Переобучение доступно с учебного центра ур. 4', tone: 'bad' }); return fail('no-center'); }
+  const u = unitById(g, id);
+  if (!u || !available(g, u)) return fail('busy');
+  if (newType === u.type) return fail('same-type');
+  if (g.buildings.tent < TYPES[newType].unlock) { emit({ kind: 'toast', text: `Для этой специализации нужен штаб ур. ${TYPES[newType].unlock}`, tone: 'bad' }); return fail('locked'); }
+  const cost = TYPES[newType].cost;
+  if (g.funds < cost) { emit({ kind: 'toast', text: 'Не хватает средств', tone: 'bad' }); return fail('funds'); }
+  g.funds -= cost; g.spent += cost;
+  const oldName = u.name;
+  const goneVerb = gv(u, 'ушла', 'ушёл');   // род читаем по СТАРОЙ личности, до подмены
+  const newName = nextCallSign(g, newType);
+  u.type = newType;
+  u.gen = TYPES[newType].gen;
+  u.name = newName;
+  u.level = 1;
+  u.away = 'training';
+  u.mission = null;
+  u.status = 'idle';
+  pushLog(g, `🎓 ${oldName} ${goneVerb} на переобучение — в следующем деле вернётся как ${newName} (${TYPES[newType].name}). В этом деле группа больше не выйдет.`, 'good');
+  emit({ kind: 'toast', text: `🎓 ${oldName} → ${newName}: смена специализации, группа покинула поиск`, tone: 'good' });
   emit({ kind: 'save' });
   return ok;
 }
