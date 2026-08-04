@@ -10,19 +10,9 @@ import {
 import { addUnit, nextCallSign } from './generate';
 import { pushLog, forceReturn, finalizeOver, setPhase } from './sim';
 import { rollEvent } from './events';
-import { ri, rf } from './rng';
 
 const ok: ActionResult = { ok: true };
 const fail = (reason: string): ActionResult => ({ ok: false, reason });
-
-/** Отметки прохода, на которых всплывёт мусор: количество — по уровню отряда. */
-function junkMarks(u: Unit): number[] {
-  const [a, b] = lvl(u.type, u.level).junk;
-  const n = a === b ? a : ri(a, b);
-  const marks: number[] = [];
-  for (let i = 0; i < n; i++) marks.push(rf(3, 100));
-  return marks.sort((x, y) => x - y);
-}
 
 /** Квадраты, которые захватывает вылет: у вертолёта 3×3. */
 function reconCells(u: Unit, cell: Cell): Pt[] {
@@ -40,7 +30,7 @@ export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = n
   const est = u.type === 'drone' ? RECON_MIN : Math.min(24 * 60, searchEst(g, u, cell));
   const m: Mission = {
     x: cell.x, y: cell.y, travel: trip.travel, estSearch: est, swept: 0, found: [],
-    track: trip.track, junkAt: junkMarks(u),
+    track: trip.track,
     event: null, hops: 0, hopDir: null, carrier: trip.carrier, aboard: false, footShare: trip.footShare,
     pausedUntil: 0, pauseFrom: 0, gps: true, radio: true, lampOut: false,
     cells: u.type === 'drone' ? reconCells(u, cell) : undefined,
@@ -56,7 +46,7 @@ export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = n
       // «Ветер» проезжал бы мимо точки высадки, а потом дёргался обратно.
       wind.mission = {
         x: trip.drop.x, y: trip.drop.y, travel: Math.max(1, trip.windMin), estSearch: 0, swept: 0, found: [],
-        track: trip.windTrack ?? trip.track, junkAt: [], event: null, hops: 0, hopDir: null, carrier: null,
+        track: trip.windTrack ?? trip.track, event: null, hops: 0, hopDir: null, carrier: null,
         aboard: false, footShare: 1, pausedUntil: 0, pauseFrom: 0, gps: true, radio: true, lampOut: false,
       };
       setPhase(g, wind, 'travel', Math.max(1, trip.windMin));

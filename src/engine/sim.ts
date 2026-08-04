@@ -315,9 +315,15 @@ export function doSearchMinute(g: Game, u: Unit, emit: Sink): void {
       }
     }
   }
-  // мусор: всплывает на заранее выбранных отметках прохода
-  while (m.junkAt.length && m.swept >= m.junkAt[0]) {
-    m.junkAt.shift();
+  // Посторонние находки — тем же видом формулы, что настоящие улики, и КВОТЫ у них нет:
+  // `LVL.junk` — ожидаемое число находок за полный проход, а не «сколько принесут».
+  // Считать шанс надо именно от прироста покрытия `dc`, а не за минуту: иначе кинолог,
+  // закрывающий квадрат втрое быстрее, принёс бы втрое меньше мусора с той же работы,
+  // и количество шума стало бы функцией темпа (ровно то разделение «качество ≠ темп»,
+  // на котором стоит весь поиск). Отсюда же берётся дисперсия: бывает пустой выход,
+  // бывает три находки подряд — прежняя квота ri(3,4) не давала ни того, ни другого.
+  const lam = lvl(u.type, u.level).junk;
+  if (lam > 0 && rnd() < 1 - Math.exp(-lam * dc / 100)) {
     const t = pick(junkTemplates)();
     const obj: MapObject = {
       id: g.objId++, kind: 'junk', text: t.text, photoText: t.photoText, vis: t.vis, air: t.air,
@@ -489,7 +495,7 @@ function tryPickup(g: Game, u: Unit, ret: number, _emit: Sink): boolean {
     w.mission = {
       x: m.x, y: m.y, travel: there, estSearch: 0, swept: 0, found: [],
       track: buildTrack(g, findPath(g, g.hq, cell, 'wind', w.level).cells, 'wind'),
-      junkAt: [], event: null, hops: 0, hopDir: null, carrier: null, aboard: false, footShare: 1,
+      event: null, hops: 0, hopDir: null, carrier: null, aboard: false, footShare: 1,
       pausedUntil: 0, pauseFrom: 0, gps: true, radio: true, lampOut: false,
     };
     setPhase(g, w, 'travel', there);

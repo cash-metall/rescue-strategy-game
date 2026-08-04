@@ -294,29 +294,54 @@ describe('осмотр квадрата', () => {
     expect(searchEst(g, u, cell)).toBeGreaterThan(0);
   });
 
+  /**
+   * Сколько посторонних находок приносит один проход по ПУСТОМУ квадрату (артефактов там нет,
+   * значит всё принесённое — мусор). `stopAt` — на каком проценте прохода прекращаем замер.
+   * Событие миссии гасим: инцидент оборвал бы проход и смазал замер ожидания.
+   */
+  const junkPerPass = (level: number, rounds = 40, stopAt = 100): number[] => {
+    const out: number[] = [];
+    for (let i = 0; i < rounds; i++) {
+      const g = fresh();
+      g.buildings.radio = 3;                        // живая передача — улики сразу в списке
+      const u = g.units[0];
+      u.level = level;
+      const cell = g.map.flat().find(c => c.terrain === 'forest' && c.objects.length === 0)!;
+      const before = g.clues.length;
+      dispatchUnit(g, u, cell);
+      u.mission!.event = null;
+      runUntil(g, () => u.status === 'search');
+      runUntil(g, () => u.mission == null || u.mission.swept >= stopAt);
+      out.push(g.clues.length - before);
+    }
+    return out;
+  };
+  const mean = (a: number[]): number => a.reduce((s, x) => s + x, 0) / a.length;
+
   it('мусор приходит по уровню: новички носят много, ГСН — ничего', () => {
-    const count = (level: number): number => {
-      let total = 0;
-      const rounds = 12;
-      for (let i = 0; i < rounds; i++) {
-        const g = fresh();
-        g.buildings.radio = 3;                      // живая передача — улики сразу в списке
-        const u = g.units[0];
-        u.level = level;
-        const cell = g.map.flat().find(c => c.terrain === 'forest' && c.objects.length === 0)!;
-        const before = g.clues.length;
-        dispatchUnit(g, u, cell);
-        runUntil(g, () => u.status === 'search');
-        runUntil(g, () => u.mission === null || u.mission.swept >= 100);
-        total += g.clues.length - before;            // в пустой клетке всё принесённое — мусор
-      }
-      return total / rounds;
-    };
-    const novice = count(1);
-    const gsn = count(4);
-    expect(novice).toBeGreaterThan(2.5);
-    expect(gsn).toBe(0);
-    expect(count(3)).toBeLessThan(novice);
+    const novice = mean(junkPerPass(1));
+    // Ожидание за полный проход — это ровно LVL.junk (0.75 у новичков). Порог двусторонний:
+    // снизу он ловит случайное обнуление механики, сверху — возврат прежнего завала,
+    // когда каждый выход новичков гарантированно давал 3–4 находки.
+    expect(novice).toBeGreaterThan(0.35);
+    expect(novice).toBeLessThan(1.6);
+    expect(mean(junkPerPass(3))).toBeLessThan(novice);
+    expect(junkPerPass(4).every(n => n === 0)).toBe(true);
+  });
+
+  it('квоты нет: у одного и того же отряда бывают и пустые выходы, и богатые', () => {
+    const passes = junkPerPass(1);
+    expect(passes.some(n => n === 0)).toBe(true);     // прежняя модель пустых не давала вовсе
+    expect(passes.some(n => n >= 2)).toBe(true);
+  });
+
+  it('мусор пропорционален проделанной работе, а не времени в поле', () => {
+    // Половина прохода — примерно половина мусора: шанс считается от прироста покрытия,
+    // поэтому оборванный на середине выход не приносит полную порцию.
+    const full = mean(junkPerPass(1));
+    const half = mean(junkPerPass(1, 40, 50));
+    expect(half).toBeLessThan(full);
+    expect(half).toBeGreaterThan(0);
   });
 });
 

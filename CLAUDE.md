@@ -76,7 +76,7 @@ src/
   components/ MapHUD (шапка карты), MapGrid/MapCell, CellSheet, TabBar/TabPanel, tabs/*,
               Modal + Intro/Settings/Results/Quest/Confirm, Icon (SVG в панелях), Toasts, ResultsFab
   styles/     tokens.css (переменные), global.css (reset + язык карты/панелей/модалок, unscoped)
-  test/       generation / autoplayer / campaign / mechanics / motion — vitest (52 теста)
+  test/       generation / autoplayer / campaign / mechanics / motion — vitest (56 тестов)
 public/images/  SVG-ассеты (топознаки местности, юниты, штаб, маркеры)
 dist/           собранная игра, закоммичена — для ручной передачи. GitHub Pages при этом раздаёт
                 НЕ её: .github/workflows/deploy.yml пересобирает проект на каждый push в main

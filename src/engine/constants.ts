@@ -82,35 +82,42 @@ export interface LvlDef {
   speed: number;         // множитель скорости хода
   fat: number;           // множитель прироста усталости
   incident: number;      // вероятность инцидента за задачу
-  junk: [number, number];// сколько посторонних находок принесёт
+  /**
+   * ОЖИДАЕМОЕ число посторонних находок за ПОЛНЫЙ проход квадрата — не квота.
+   * Фактическое количество случайно: бросок идёт от прироста покрытия (см. doSearchMinute),
+   * поэтому бывает и пустой выход, и три находки подряд.
+   */
+  junk: number;
   dir: boolean;          // определяет направление
   note: string;
 }
 
 export const LVL: Record<UnitType, LvlDef[]> = {
   foot: [
-    { name: 'Новички', detect: 0.80, cover: 1, speed: 1, fat: 1.00, incident: 0.20, junk: [3, 4], dir: false, note: 'Много мусора, направление не читают.' },
-    { name: 'Опытные', detect: 1.00, cover: 1, speed: 1, fat: 0.90, incident: 0.10, junk: [1, 3], dir: false, note: 'Мусора меньше, направление всё ещё не читают.' },
-    { name: 'Старший поисковой группы', detect: 1.20, cover: 1, speed: 1, fat: 0.80, incident: 0.05, junk: [0, 1], dir: true, note: 'Определяет направление, мусор почти не носит.' },
-    { name: 'Группа специального назначения', detect: 1.50, cover: 1, speed: 1, fat: 0.70, incident: 0.07, junk: [0, 0], dir: true, note: 'Направление, скорость и давность следа. Мусор не приносит. Рискует больше.' },
+    { name: 'Новички', detect: 0.80, cover: 1, speed: 1, fat: 1.00, incident: 0.20, junk: 0.75, dir: false, note: 'Много мусора, направление не читают.' },
+    { name: 'Опытные', detect: 1.00, cover: 1, speed: 1, fat: 0.90, incident: 0.10, junk: 0.34, dir: false, note: 'Мусора меньше, направление всё ещё не читают.' },
+    { name: 'Старший поисковой группы', detect: 1.20, cover: 1, speed: 1, fat: 0.80, incident: 0.05, junk: 0.11, dir: true, note: 'Определяет направление, мусор почти не носит.' },
+    { name: 'Группа специального назначения', detect: 1.50, cover: 1, speed: 1, fat: 0.70, incident: 0.07, junk: 0, dir: true, note: 'Направление, скорость и давность следа. Мусор не приносит. Рискует больше.' },
   ],
+  // Собака работает по запаху, а не по блестящим банкам, и закрывает квадраты втрое быстрее:
+  // при равном с лисой `junk` кинолог стал бы главным источником шума в игре.
   dog: [
-    { name: 'Собака-стажёр', detect: 0.90, cover: 3, speed: 1, fat: 1.00, incident: 0.02, junk: [0, 1], dir: false, note: 'Быстро обследует квадрат, направление не определяет.' },
-    { name: 'Поисковая собака', detect: 1.00, cover: 3, speed: 1, fat: 0.92, incident: 0.02, junk: [0, 1], dir: true, note: 'При находке определяет направление.' },
-    { name: 'Следовая собака', detect: 1.00, cover: 3, speed: 1, fat: 0.85, incident: 0.02, junk: [0, 1], dir: true, note: 'При находке сама уходит в следующий квадрат — один раз за задачу.' },
-    { name: 'Резерв', detect: 1.00, cover: 3, speed: 1, fat: 0.85, incident: 0.02, junk: [0, 1], dir: true, note: 'В разработке.' },
+    { name: 'Собака-стажёр', detect: 0.90, cover: 3, speed: 1, fat: 1.00, incident: 0.02, junk: 0.30, dir: false, note: 'Быстро обследует квадрат, направление не определяет.' },
+    { name: 'Поисковая собака', detect: 1.00, cover: 3, speed: 1, fat: 0.92, incident: 0.02, junk: 0.20, dir: true, note: 'При находке определяет направление.' },
+    { name: 'Следовая собака', detect: 1.00, cover: 3, speed: 1, fat: 0.85, incident: 0.02, junk: 0.20, dir: true, note: 'При находке сама уходит в следующий квадрат — один раз за задачу.' },
+    { name: 'Резерв', detect: 1.00, cover: 3, speed: 1, fat: 0.85, incident: 0.02, junk: 0.20, dir: true, note: 'В разработке.' },
   ],
   wind: [
-    { name: 'Местный на уазике', detect: 0, cover: 0, speed: 2, fat: 1.00, incident: 0.15, junk: [0, 0], dir: false, note: 'Одна группа за раз. Не едет в болото и чащу.' },
-    { name: 'Опытный водитель-поисковик', detect: 0, cover: 0, speed: 3, fat: 0.90, incident: 0.10, junk: [0, 0], dir: false, note: 'Две группы, подбирает по пути. Не едет в болото и чащу.' },
-    { name: 'Экипаж со штурманом', detect: 0, cover: 0, speed: 3, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'Проходит болото и чащу, по дороге может подобрать улику. Рискует людьми и техникой.' },
-    { name: 'Резерв', detect: 0, cover: 0, speed: 3, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'В разработке.' },
+    { name: 'Местный на уазике', detect: 0, cover: 0, speed: 2, fat: 1.00, incident: 0.15, junk: 0, dir: false, note: 'Одна группа за раз. Не едет в болото и чащу.' },
+    { name: 'Опытный водитель-поисковик', detect: 0, cover: 0, speed: 3, fat: 0.90, incident: 0.10, junk: 0, dir: false, note: 'Две группы, подбирает по пути. Не едет в болото и чащу.' },
+    { name: 'Экипаж со штурманом', detect: 0, cover: 0, speed: 3, fat: 0.85, incident: 0.05, junk: 0, dir: false, note: 'Проходит болото и чащу, по дороге может подобрать улику. Рискует людьми и техникой.' },
+    { name: 'Резерв', detect: 0, cover: 0, speed: 3, fat: 0.85, incident: 0.05, junk: 0, dir: false, note: 'В разработке.' },
   ],
   drone: [
-    { name: 'БПЛА с камерой', detect: 0.20, cover: 0, speed: 1, fat: 1.00, incident: 0.05, junk: [0, 0], dir: false, note: 'Только днём. Один квадрат за вылет.' },
-    { name: 'БПЛА с тепловизором', detect: 0.20, cover: 0, speed: 1, fat: 0.92, incident: 0.05, junk: [0, 0], dir: false, note: 'Летает и ночью, но в темноте видит только людей и костры.' },
-    { name: 'Вертолёт', detect: 0.20, cover: 0, speed: 1, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'Только днём, зато осматривает сразу 9 квадратов.' },
-    { name: 'Резерв', detect: 0.20, cover: 0, speed: 1, fat: 0.85, incident: 0.05, junk: [0, 0], dir: false, note: 'В разработке.' },
+    { name: 'БПЛА с камерой', detect: 0.20, cover: 0, speed: 1, fat: 1.00, incident: 0.05, junk: 0, dir: false, note: 'Только днём. Один квадрат за вылет.' },
+    { name: 'БПЛА с тепловизором', detect: 0.20, cover: 0, speed: 1, fat: 0.92, incident: 0.05, junk: 0, dir: false, note: 'Летает и ночью, но в темноте видит только людей и костры.' },
+    { name: 'Вертолёт', detect: 0.20, cover: 0, speed: 1, fat: 0.85, incident: 0.05, junk: 0, dir: false, note: 'Только днём, зато осматривает сразу 9 квадратов.' },
+    { name: 'Резерв', detect: 0.20, cover: 0, speed: 1, fat: 0.85, incident: 0.05, junk: 0, dir: false, note: 'В разработке.' },
   ],
 };
 

@@ -85,7 +85,6 @@ export interface Mission {
    * `setPhase`, и каждая новая начинается там, где отряд стоит сейчас.
    */
   track: Track;
-  junkAt: number[];        // отметки покрытия, на которых всплывёт мусор
   event: MissionEvent | null;
   hops: number;            // переходы следовой собаки (максимум 1)
   hopDir: number | null;   // направление найденного следа — куда собака поведёт группу
