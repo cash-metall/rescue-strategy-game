@@ -1,5 +1,5 @@
 import type { Game, Campaign, Cell, Pt, Profile, MapObject, UnitType, ObjClass } from './types';
-import { W, H, CLR, PROFILES, ITEMS, TYPES } from './constants';
+import { W, H, CLR, PROFILES, ITEMS, TYPES, XP_FIRST } from './constants';
 import { ri, rf, rnd, pick } from './rng';
 import { clamp, dist, cheb, angleTo } from './util';
 
@@ -15,7 +15,8 @@ export function newGame(camp: Campaign): Game {
 
 export function tryGen(camp: Campaign): Game | null {
   const g: Game = {
-    t: 0, funds: 250, incAcc: 0, spent: 0, over: null, medicsGone: false, quest: null,
+    t: 0, funds: camp.funds, incAcc: 0, spent: 0, over: null, medicsGone: false, quest: null,
+    xp: 0, xpNext: XP_FIRST, donated: 0,
     weather: 'clear', weatherNext: ri(150, 320), nextEvent: ri(200, 300),
     warned: { w60: false, w35: false, w15: false },
     buildings: { ...camp.buildings },
@@ -131,7 +132,8 @@ export function tryGen(camp: Campaign): Game | null {
   g.map[lkp.y][lkp.x].shown = 25;
   g.clues.push({
     id: g.clueId++, x: lkp.x, y: lkp.y, text: startArt.text, kind: 'art',
-    dirShow: startArt.dirTrue, noPos: false, tFound: 0, mark: 'real', verdict: 'real', exp: 'done', isNew: false,
+    dirShow: startArt.dirTrue, noPos: false, tFound: 0, mark: 'real', verdict: 'real', exp: 'done',
+    isNew: false, rated: true,   // данность, а не работа отряда: отклика за неё нет
   });
   // Стартовая улика — данность, а не заслуга игрока: в cluesReal она не идёт,
   // иначе штабные события сразу считали бы дело успешным (см. randomEvent).

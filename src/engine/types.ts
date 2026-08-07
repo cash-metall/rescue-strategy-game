@@ -130,6 +130,8 @@ export interface Clue {
   exp: 'wait' | 'run' | 'done' | null;
   markAtExp?: Verdict | null;
   isNew: boolean;
+  /** Отклик за разбор находки уже начислен — снятая и заново поставленная метка его не повторит. */
+  rated: boolean;
 }
 
 // Наводка «возможная цель» — то, что приносит коптер и телефонные звонки.
@@ -167,6 +169,15 @@ export interface Quest {
   by: string | null;
 }
 
+/** Итоговый сбор по делу: что жертвователи прислали, увидев отчёт о работе. */
+export interface Payout {
+  outcome: number;      // за исход дела
+  clues: number;        // за настоящие улики, поднятые в этом деле
+  cluesCount: number;   // сколько их было
+  leftover: number;     // конвертация недобранного отклика
+  total: number;        // сумма отчёта (без траншей, пришедших по ходу дела)
+}
+
 export interface Over {
   outcome: Outcome;
   by: string | null;
@@ -179,6 +190,9 @@ export interface Over {
   strength: number;
   score: number;
   questCorrect?: number;
+  donated: number;      // пожертвования, пришедшие траншами по ходу дела
+  payout: Payout;       // отчёт по делу
+  fundLeft: number;     // фонд отряда, который уйдёт в следующее дело
 }
 
 export interface UiState {
@@ -195,6 +209,14 @@ export interface Game {
   funds: number;
   incAcc: number;
   spent: number;
+  /**
+   * Отклик — сколько внимания отряд заработал работой: прочёсанными квадратами и разобранными
+   * находками. Копится к следующему траншу пожертвований (`xpNext`), при достижении обнуляется,
+   * а порог растёт. Недобранный остаток конвертируется в деньги в отчёте по делу.
+   */
+  xp: number;
+  xpNext: number;
+  donated: number;         // сколько пришло траншами за это дело — для итогов
   over: Over | null;
   medicsGone: boolean;
   quest: Quest | null;
@@ -234,6 +256,8 @@ export interface Campaign {
   roster: RosterEntry[];
   nameCnt: Record<UnitType, number>;
   stats: CampStats;
+  /** Фонд отряда: остаток средств переходит из дела в дело вместе со штабом. */
+  funds: number;
 }
 
 // --- Побочные эффекты движка (эфемерный UI) ---

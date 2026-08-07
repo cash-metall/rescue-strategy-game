@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
-  newGame, simMinute, actBuild, actHire, actSend, actQuest, actAbandon, heatScores, planTrip,
+  newGame, simMinute, actBuild, actHire, actSend, actQuest, actAbandon, actMark, heatScores, planTrip,
   cellAt, targetable, inRange, missionSlots, available, setRng, resetRng,
   TENTCAP, TYPES, BUILD, DEFAULT_CAMPAIGN,
   type Game, type Fx, type Outcome,
@@ -70,8 +70,13 @@ function playGame(strategy: 'smart' | 'naive'): Result {
             if (cur < BUILD[key].max && g.funds >= cost) { actBuild(g, key, noop); buildStep++; }
           }
         }
-        // компетентный игрок: помечает находки идеально
-        for (const c of g.clues) { if (!c.verdict) c.mark = c.kind === 'art' ? 'real' : 'junk'; }
+        // Компетентный игрок: помечает находки идеально — но через НАСТОЯЩЕЕ действие, а не
+        // присваиванием. Разбор находки даёт отклик (`XP_MARK`), то есть деньги, и прямое
+        // `c.mark = …` занижало бы доход бота против живого игрока. Условие `!c.mark` обязательно:
+        // `actMark` работает переключателем и повторный вызов снял бы метку.
+        for (const c of g.clues) {
+          if (!c.verdict && !c.mark) actMark(g, c.id, c.kind === 'art' ? 'real' : 'junk', noop);
+        }
 
         const heat = heatScores(g);
         const targeted = new Set(g.units.filter(u => u.mission).map(u => u.mission!.x + ',' + u.mission!.y));

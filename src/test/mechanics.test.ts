@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
-  newGame, simMinute, dispatchUnit, addUnit, actSend, actAbandon, actTrain, actBuild,
+  newGame, simMinute, dispatchUnit, addUnit, actSend, actAbandon, actTrain, actBuild, actMark,
   findPath, passable, planTrip, sendBlock, cellAt, coverRate, detectEff, searchEst,
   available, isBusy, freeWinds, windCapacity, incidentPool, rollEvent,
-  forceReturn, windMinutes, unitCell, targetable,
+  forceReturn, windMinutes, unitCell, targetable, addXp, finalizeOver, interestAt,
   setRng, resetRng, DEFAULT_CAMPAIGN, LVL, EVENT_CHANCE, RECON_MIN, WIND_PASS,
+  XP_MARK, XP_STEP, PASSIVE_INCOME, START_FUNDS,
   type Game, type Fx, type Unit, type UnitType,
 } from '../engine';
 
@@ -462,5 +463,112 @@ describe('прокачка и исходы', () => {
     expect(actBuild(g, 'carto', noop).ok).toBe(false);
     expect(actSend(g, noop).ok).toBe(false);
     expect(actTrain(g, g.units[0].id, noop).ok).toBe(false);
+  });
+});
+
+describe('экономика: отклик и пожертвования', () => {
+  /** Прогнать один полный проход по пустому квадрату и вернуть игру. */
+  const sweepOnce = (g: Game, u = g.units[0]): void => {
+    const cell = g.map.flat().find(c => c.terrain === 'forest' && c.objects.length === 0 && c.coverage < 100)!;
+    dispatchUnit(g, u, cell);
+    u.mission!.event = null;
+    runUntil(g, () => u.status === 'search');
+    runUntil(g, () => u.mission == null || u.mission.swept >= 100);
+  };
+
+  it('отклик растёт за НОВОЕ покрытие: повторный проход по закрытому квадрату его не приносит', () => {
+    const g = fresh();
+    const u = g.units[0];
+    const cell = g.map.flat().find(c => c.terrain === 'forest' && c.objects.length === 0)!;
+    const xp0 = g.xp + g.donated;
+    dispatchUnit(g, u, cell);
+    u.mission!.event = null;
+    runUntil(g, () => u.status === 'search');
+    runUntil(g, () => u.mission == null || u.mission.swept >= 100);
+    const gained = g.xp + g.donated - xp0;
+    expect(gained).toBeGreaterThan(0);
+    expect(cell.coverage).toBeGreaterThan(95);
+
+    // второй проход по тому же квадрату: работа есть, нового покрытия нет — отклика нет
+    u.status = 'idle'; u.mission = null; u.fatigue = 0;
+    const xp1 = g.xp;
+    const donated1 = g.donated;
+    dispatchUnit(g, u, cell);
+    u.mission!.event = null;
+    runUntil(g, () => u.status === 'search');
+    runUntil(g, () => u.mission == null || u.mission.swept >= 100);
+    expect(g.xp).toBe(xp1);
+    expect(g.donated).toBe(donated1);
+  });
+
+  it('на пороге приходит пожертвование, а следующий порог дороже', () => {
+    const g = fresh();
+    const first = g.xpNext;
+    const money0 = g.funds;
+    addXp(g, first, noop);
+    expect(g.donated).toBeGreaterThan(0);
+    expect(g.funds).toBe(money0 + g.donated);
+    expect(g.xpNext).toBe(first + XP_STEP);
+    expect(g.xp).toBe(0);
+  });
+
+  it('интерес к делу затухает: та же работа на четвёртые сутки приносит меньше', () => {
+    const early = fresh();
+    sweepOnce(early);
+    const earlyXp = early.xp + early.donated / 1;   // деньги за транш пришли из того же отклика
+
+    const late = fresh();
+    late.t = 4 * 1440;                              // четвёртые сутки поисков
+    sweepOnce(late);
+    expect(interestAt(late.t)).toBeLessThan(interestAt(0) * 0.6);
+    expect(late.xp).toBeLessThan(earlyXp);
+  });
+
+  it('разбор находки даёт отклик один раз и одинаково за 📌 и 🗑', () => {
+    const g = fresh();
+    // подкладываем две находки — настоящую и мусор
+    for (const kind of ['art', 'junk'] as const) {
+      g.clues.unshift({
+        id: g.clueId++, x: 1, y: 1, text: 't', kind, dirShow: null, noPos: false, tFound: g.t,
+        mark: null, verdict: null, exp: null, isNew: true, rated: false,
+      });
+    }
+    const [junkClue, artClue] = g.clues;
+    const before = g.xp;
+    actMark(g, artClue.id, 'real', noop);
+    const afterArt = g.xp - before;
+    actMark(g, junkClue.id, 'junk', noop);
+    const afterJunk = g.xp - before - afterArt;
+    expect(afterArt).toBe(XP_MARK);
+    expect(afterJunk).toBe(XP_MARK);   // по метке не узнать, что настоящее: платят одинаково
+
+    // снять и поставить заново — отклик не повторяется
+    actMark(g, artClue.id, 'real', noop);
+    actMark(g, artClue.id, 'junk', noop);
+    expect(g.xp).toBe(before + 2 * XP_MARK);
+  });
+
+  it('отчёт по делу платит за исход: живой дороже погибшего, за свёрнутый поиск не платят', () => {
+    const alive = fresh();
+    finalizeOver(alive, 'alive', 'Лиса-1');
+    const dead = fresh();
+    finalizeOver(dead, 'dead', 'Лиса-1');
+    const quit = fresh();
+    finalizeOver(quit, 'abandoned', null);
+
+    expect(alive.over!.payout.outcome).toBeGreaterThan(dead.over!.payout.outcome);
+    expect(quit.over!.payout.outcome).toBe(0);
+    // выплата уходит в фонд, который переживёт конец дела
+    expect(alive.funds).toBe(START_FUNDS + alive.over!.payout.total);
+    expect(alive.over!.fundLeft).toBe(alive.funds);
+  });
+
+  it('деньги идут за работу, а не за время: пустая минута почти ничего не приносит', () => {
+    const g = fresh();
+    const before = g.funds;
+    for (let i = 0; i < 600; i++) simMinute(g, noop);   // 10 часов без единого выхода
+    // только ручеёк регулярных жертвователей (плюс возможное штабное событие)
+    expect(g.funds - before).toBeLessThan(600 * PASSIVE_INCOME + 100);
+    expect(g.donated).toBe(0);
   });
 });

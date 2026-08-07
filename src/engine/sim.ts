@@ -1,8 +1,10 @@
-import type { Game, Unit, Cell, MapObject, Sink, Outcome, Pt, UnitStatus, Track } from './types';
+import type { Game, Unit, Cell, MapObject, Sink, Outcome, Payout, Pt, UnitStatus, Track } from './types';
 import {
   TYPES, WEATHER, EXPS, EXPT, EXPREWARD, lvl, FIND_K, RADIO_LIVE_LVL,
   DOG_FOOT_FAT, RECON_MIN, HELI_OUTER, FALSE_SIGHT, CLASS_BONUS, VICTIM_AIR_VIS,
   WIND_PICKUP_CLUE, BUSY_CHANCE, BUSY_HOURS, W, H,
+  PASSIVE_INCOME, XP_PER_COVER, XP_STEP, DONATION, BIG_DONOR, XP_TO_MONEY,
+  REPORT_PAYOUT, CLUE_FEE, interestAt,
 } from './constants';
 import { ri, rf, rnd, pick } from './rng';
 import { cheb, coordName, gv, plural, dirName } from './util';
@@ -39,10 +41,40 @@ export function pushLog(g: Game, txt: string, cls?: string): void {
   if (g.log.length > 250) g.log.pop();
 }
 
+/**
+ * Отряду никто не платит — деньги приходят пожертвованиями, а жертвуют тогда, когда есть что
+ * показать. `addXp` копит отклик за проделанную работу и на каждом пороге выдаёт транш.
+ * Порог растёт: первая публикация отчёта собирает быстро, десятая — медленно.
+ */
+export function addXp(g: Game, amount: number, emit: Sink): void {
+  if (g.over || amount <= 0) return;
+  g.xp += amount;
+  while (g.xp >= g.xpNext) {
+    g.xp -= g.xpNext;
+    g.xpNext += XP_STEP;
+    payDonation(g, emit);
+  }
+}
+
+function payDonation(g: Game, emit: Sink): void {
+  const big = rnd() < BIG_DONOR;
+  const sum = ri(DONATION[0], DONATION[1]) * (big ? 2 : 1);
+  g.funds += sum;
+  g.donated += sum;
+  pushLog(g, big
+    ? `📣 Отчёт о поисках разошёлся по городу — откликнулся крупный жертвователь: +${sum} ₽`
+    : `📣 Отчёт о работе отряда разошёлся по группам: пожертвования +${sum} ₽`, 'good');
+  emit({ kind: 'toast', text: `📣 Пожертвования +${sum} ₽`, tone: 'good' });
+  // Фонд переносится между делами, поэтому приход фиксируем сразу: иначе покупки в кампанию
+  // попадают (они шлют 'save'), а доход — нет, и перезагрузка посреди дела съедала бы транши.
+  emit({ kind: 'save' });
+}
+
 export function simMinute(g: Game, emit: Sink): void {
   g.t++;
-  // приток пожертвований
-  g.incAcc += 0.55;
+  // Ручеёк регулярных жертвователей. Основные деньги приходят не отсюда, а за проделанную
+  // работу — см. addXp/payDonation.
+  g.incAcc += PASSIVE_INCOME;
   if (g.incAcc >= 1) { const a = Math.floor(g.incAcc); g.funds += a; g.incAcc -= a; }
   // погода
   if (g.t >= g.weatherNext) changeWeather(g);
@@ -294,7 +326,12 @@ export function doSearchMinute(g: Game, u: Unit, emit: Sink): void {
   const before = m.swept;
   m.swept = Math.min(100, before + rate);
   const dc = m.swept - before;
+  // Отклик — только за НОВОЕ покрытие карты: прирост максимума клетки, а не прохода. Иначе две
+  // группы фармили бы пожертвования, гоняя один и тот же квадрат туда-обратно, а так суммарный
+  // отклик с прочёсывания ограничен размером карты. Интерес к делу со временем затухает.
+  const covBefore = c.coverage;
   c.coverage = Math.max(c.coverage, m.swept);
+  addXp(g, (c.coverage - covBefore) * XP_PER_COVER * interestAt(g.t), emit);
   c.touched = true;
   c.revealed = true;
   c.searchedEff = detectEff(u);   // картограф ур. 3 покажет качество осмотра по квадрату
@@ -575,7 +612,7 @@ export function createClue(g: Game, u: Unit, obj: MapObject, at: Pt, noPos = fal
   g.clues.unshift({
     id: g.clueId++, x: at.x, y: at.y, text,
     kind: obj.kind, dirShow, noPos: hidden, tFound: g.t,
-    mark: null, verdict: null, exp: null, isNew: true,
+    mark: null, verdict: null, exp: null, isNew: true, rated: false,
   });
   g.stats.cluesTotal++;
 }
@@ -619,13 +656,15 @@ export function checkVictimWarnings(g: Game, emit: Sink): void {
 
 export function randomEvent(g: Game, emit: Sink): void {
   const r = rnd();
+  // Суммы здесь намеренно небольшие: это эпизодическая помощь, а не источник бюджета.
+  // Основные деньги отряд собирает откликом на проделанную работу (см. addXp).
   if (r < 0.3) {
-    g.funds += 70;
-    pushLog(g, '🥧 Местные жители привезли в лагерь еду и тёплые вещи (+70 ₽)', 'good');
+    g.funds += 40;
+    pushLog(g, '🥧 Местные жители привезли в лагерь еду и тёплые вещи (+40 ₽)', 'good');
   } else if (r < 0.55) {
     // Порог по числу ПОДТВЕРЖДЁННЫХ игроком улик: стартовая улика на ТПК одна и не считается за успех.
     const big = g.stats.cluesReal >= 2;
-    const a = big ? 140 : 60;
+    const a = big ? 80 : 30;
     g.funds += a;
     pushLog(g, big ? `📺 Сюжет о поисках вышел в новостях — пожертвования выросли (+${a} ₽)` : `🤝 Волонтёрские взносы (+${a} ₽)`, 'good');
   } else {
@@ -672,6 +711,19 @@ export function foundVictim(g: Game, u: Unit, emit: Sink): void {
 export function finalizeOver(g: Game, outcome: Outcome, by: string | null, questCorrect?: number): void {
   const hrs = Math.floor(g.t / 60), mins = g.t % 60;
   const searched = g.map.flat().filter(c => c.touched).length;
+  // Отчёт по делу: публикация итога собирает основную часть пожертвований. Настоящие улики
+  // оплачиваются ЗДЕСЬ, а не в момент находки, — иначе скачок отклика выдавал бы игроку правду
+  // и сверять находки с приметами было бы незачем.
+  const cluesCount = g.clues.filter(c => c.kind === 'art' && c.tFound > 0).length;
+  const payout: Payout = {
+    outcome: REPORT_PAYOUT[outcome],
+    clues: cluesCount * CLUE_FEE,
+    cluesCount,
+    leftover: Math.round(g.xp * XP_TO_MONEY),
+    total: 0,
+  };
+  payout.total = payout.outcome + payout.clues + payout.leftover;
+  g.funds += payout.total;
   let score = 0;
   if (outcome === 'alive') score = Math.max(0, Math.round(g.victim.strength * 10 + 500 - g.t / 10));
   else if (outcome === 'alive-late') {
@@ -683,6 +735,7 @@ export function finalizeOver(g: Game, outcome: Outcome, by: string | null, quest
     hrs, mins, searched,
     cluesTotal: g.stats.cluesTotal, cluesReal: g.stats.cluesReal,
     spent: g.spent, strength: g.victim.strength, score, questCorrect,
+    donated: g.donated, payout, fundLeft: Math.max(0, Math.floor(g.funds)),
   };
   g.quest = null;
 }

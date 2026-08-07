@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   newGame, simMinute, actBuild, actHire, actTrain, actRetrain, foundVictim, finalizeOver,
   loadCampaign, saveCampaign, resetCampaign, memoryKV, SAVE_KEY, MAXLVL, TYPES,
+  DEFAULT_CAMPAIGN, START_FUNDS,
   type Fx, type Game, type CampStats,
 } from '../engine';
 
@@ -9,7 +10,7 @@ const noop = (_fx: Fx) => {};
 const zero = (): CampStats => ({ alive: 0, dead: 0, missing: 0 });
 
 describe('кампания: перенос штаба между делами', () => {
-  it('постройки/ростер/уровень переносятся, усталость сброшена, локация новая, бюджет свежий', () => {
+  it('постройки/ростер/уровень/фонд переносятся, усталость сброшена, локация новая', () => {
     const kv = memoryKV();
     let campaign = loadCampaign(kv);          // дефолт
     let stats = zero();
@@ -55,7 +56,12 @@ describe('кампания: перенос штаба между делами', 
     expect(g2.units.every(x => !x.away && x.busyUntil === 0 && x.restNeed === 0)).toBe(true);
     const newLoc = (g2.lkp.x + ',' + g2.lkp.y) !== oldLkp || (g2.victim.x + ',' + g2.victim.y) !== oldVictim;
     expect(newLoc).toBe(true);
-    expect(g2.funds).toBe(250);
+    // Фонд отряда переходит в следующее дело: остаток + отчёт по делу. Без этого награда за
+    // найденного живым сгорала бы ровно в момент выдачи — дело кончается тем же кадром.
+    expect(g2.funds).toBe(g.funds);
+    // и отчёт по делу успел начислиться ДО сохранения кампании
+    expect(g.over!.payout.outcome).toBeGreaterThan(0);
+    expect(g.over!.fundLeft).toBe(g2.funds);
     expect(typeof savedRaw).toBe('string');
     expect((savedRaw as string).length).toBeGreaterThan(0);
   });
@@ -176,6 +182,7 @@ describe('кампания: перенос штаба между делами', 
       ],
       nameCnt: { foot: 1, dog: 1, wind: 0, drone: 0 },
       stats: { alive: 'x', dead: 2, missing: null },
+      funds: 'много',
     }));
     const c = loadCampaign(kv);
     expect(c.buildings.tent).toBe(4);        // клампится к BUILD.tent.max
@@ -184,5 +191,15 @@ describe('кампания: перенос штаба между делами', 
     expect(c.roster.length).toBe(2);         // неизвестный тип выброшен
     expect(c.roster[0].level).toBe(MAXLVL);  // уровень клампится
     expect(c.stats).toEqual({ alive: 0, dead: 2, missing: 0 });
+    expect(c.funds).toBe(START_FUNDS);       // нечисло → стартовый фонд
+  });
+
+  it('отрицательный фонд в сохранении обнуляется, дробный — обрезается', () => {
+    const kv = memoryKV();
+    const base = DEFAULT_CAMPAIGN();
+    kv.setItem(SAVE_KEY, JSON.stringify({ ...base, funds: -500 }));
+    expect(loadCampaign(kv).funds).toBe(0);
+    kv.setItem(SAVE_KEY, JSON.stringify({ ...base, funds: 812.7 }));
+    expect(loadCampaign(kv).funds).toBe(812);
   });
 });

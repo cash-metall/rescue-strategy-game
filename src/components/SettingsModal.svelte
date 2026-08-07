@@ -30,6 +30,7 @@
     {#each buildKeys as k (k)}
       {BUILD[k].icon} {BUILD[k].name.toLowerCase()} — ур. {g.buildings[k]}/{BUILD[k].max}<br />
     {/each}
+    💰 фонд отряда — <b class="hl">{Math.floor(g.funds)} ₽</b> (остаток переходит в следующее дело)
   </p>
 
   <div class="secH">Состав команд</div>

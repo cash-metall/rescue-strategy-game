@@ -21,6 +21,9 @@ index.html → src/main.ts → mount(App)
 Объявлен в `engine/types.ts`, создаётся `newGame(camp)` → `tryGen(camp)` на каждое дело:
 
 - `t` — игровое время в минутах (0 = 08:00 первого дня), `funds` / `incAcc` / `spent` — деньги.
+- `xp` / `xpNext` / `donated` — **отклик**: сколько внимания отряд заработал работой, какой порог у
+  следующего транша пожертвований и сколько уже пришло за это дело. Стартовый `funds` берётся из
+  `Campaign.funds` — фонд переносится между делами ([systems.md](systems.md) → «Экономика»).
 - `map[y][x]` — сетка `Cell {x, y, terrain, coverage, shown, objects[], touched?}`:
   `coverage` — правда для движка (лучший из проходов), `shown` — что видит игрок.
 - `profile`, `lkp`, `path`, `trailSet`, `victim`, `drainBase`, **`hq`** — пропавший, точка последнего
@@ -40,7 +43,7 @@ index.html → src/main.ts → mount(App)
 
 ### `Campaign` — мета-прогресс между делами
 
-`{buildings, roster[{type,name,level}], nameCnt, stats}` в `localStorage` под ключом
+`{buildings, roster[{type,name,level}], nameCnt, stats, funds}` в `localStorage` под ключом
 `SAVE_KEY = 'rescueHQ.campaign.v1'`. Правила и формат — [campaign.md](campaign.md).
 
 ## Чистый движок и порт побочек

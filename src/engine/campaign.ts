@@ -2,6 +2,13 @@ import type { Campaign, CampStats, Game, KV, UnitType, BuildKey } from './types'
 import { SAVE_KEY, TYPES, BUILD, MAXLVL } from './constants';
 import { clamp } from './util';
 
+/**
+ * Стартовый фонд самого первого дела — остаток прошлых сборов отряда. Дальше он живёт тем, что
+ * собрал сам. Выше прежних 250 ₽ намеренно: деньги больше не капают по минутам, и до первого
+ * пожертвования штабу нужно на что-то развернуться.
+ */
+export const START_FUNDS = 550;
+
 export function DEFAULT_CAMPAIGN(): Campaign {
   return {
     buildings: { tent: 1, radio: 1, carto: 0, rest: 0, train: 0 },
@@ -11,6 +18,7 @@ export function DEFAULT_CAMPAIGN(): Campaign {
     ],
     nameCnt: { foot: 2, dog: 0, wind: 0, drone: 0 },
     stats: { alive: 0, dead: 0, missing: 0 },
+    funds: START_FUNDS,
   };
 }
 
@@ -39,6 +47,7 @@ export function normalizeCampaign(c: any): Campaign {
       .map((r: any) => ({ type: r.type as UnitType, name: String(r.name || 'Отряд'), level: clamp(num(r.level, 1), 1, MAXLVL) })),
     nameCnt,
     stats,
+    funds: Math.max(0, num(c?.funds, d.funds)),
   };
 }
 
@@ -54,12 +63,15 @@ export function loadCampaign(kv: KV): Campaign {
 }
 
 // Собирает кампанию из текущего состояния g + переданной статистики и пишет в хранилище.
+// Фонд отряда сохраняется вместе со штабом: остаток средств переходит в следующее дело,
+// а отчёт по делу (`finalizeOver`) успевает начислиться в `g.funds` до вызова отсюда.
 export function saveCampaign(kv: KV, g: Game, stats: CampStats): Campaign {
   const campaign: Campaign = {
     buildings: { ...g.buildings },
     roster: g.units.map(u => ({ type: u.type, name: u.name, level: u.level })),
     nameCnt: { ...g.nameCnt },
     stats: { ...stats },
+    funds: Math.max(0, Math.floor(g.funds)),
   };
   try { kv.setItem(SAVE_KEY, JSON.stringify(campaign)); } catch { /* ignore */ }
   return campaign;

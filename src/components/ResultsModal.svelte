@@ -51,11 +51,26 @@
     <div class="endstat"><span>Счёт</span><b>{o.score}</b></div>
   {/if}
 
+  <h3>Пожертвования</h3>
+  <p class="mut" style="margin-bottom:8px">Отряду никто не платит. Люди жертвуют, когда видят работу: по ходу поисков откликом собрано {o.donated} ₽, остальное принёс отчёт по делу.</p>
+  <div class="endstat"><span>Собрано по ходу поисков</span><b>{o.donated} ₽</b></div>
+  <div class="endstat">
+    <span>{o.outcome === 'alive' ? 'Найден жив' : o.outcome === 'alive-late' ? 'Найден жив, поздно' : o.outcome === 'dead' ? 'Найден погибшим' : 'Поиски свёрнуты'}</span>
+    <b>{o.payout.outcome > 0 ? '+' + o.payout.outcome + ' ₽' : '—'}</b>
+  </div>
+  {#if o.payout.cluesCount}
+    <div class="endstat"><span>Настоящих улик найдено: {o.payout.cluesCount}</span><b>+{o.payout.clues} ₽</b></div>
+  {/if}
+  {#if o.payout.leftover}
+    <div class="endstat"><span>Остаток отклика</span><b>+{o.payout.leftover} ₽</b></div>
+  {/if}
+  <div class="endstat"><span><b>Фонд отряда на следующее дело</b></span><b class="hl">{o.fundLeft} ₽</b></div>
+
   <h3>Хроника поисков</h3>
   <div class="endstat"><span>✅ Найдены живыми</span><b>{st.alive}</b></div>
   <div class="endstat"><span>🕯️ Найдены погибшими</span><b>{st.dead}</b></div>
   <div class="endstat"><span>✖ Не найдены</span><b>{st.missing}</b></div>
-  <p class="mut" style="margin-top:10px">Штаб и команды (с их уровнями обучения) переходят в следующее дело — опыт накапливается.</p>
+  <p class="mut" style="margin-top:10px">Штаб, команды (с их уровнями обучения) и фонд отряда переходят в следующее дело — опыт и средства накапливаются.</p>
 
   <div style="text-align:center;margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     <button class="btn" onclick={() => game.showMap()}>🗺 Осмотреть карту</button>

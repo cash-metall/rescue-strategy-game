@@ -1,6 +1,7 @@
 import type { Game, Unit, Cell, Sink, ActionResult, UnitType, BuildKey, Verdict, Mission, Pt } from './types';
 import {
-  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, EXP_LVL, RETRAIN_LVL, RECON_MIN, lvl, W, H,
+  TYPES, BUILD, MISSCAP, TENTCAP, TRAINCOST, TRAINABLE, EXPCOST, EXP_LVL, RETRAIN_LVL, RECON_MIN,
+  XP_MARK, lvl, W, H,
 } from './constants';
 import { coordName, gv, fmtDur } from './util';
 import {
@@ -8,7 +9,7 @@ import {
   planTrip, searchEst, freeWinds, windCapacity, windMinutes, isNight,
 } from './access';
 import { addUnit, nextCallSign } from './generate';
-import { pushLog, forceReturn, finalizeOver, setPhase } from './sim';
+import { pushLog, forceReturn, finalizeOver, setPhase, addXp } from './sim';
 import { rollEvent } from './events';
 
 const ok: ActionResult = { ok: true };
@@ -215,6 +216,9 @@ export function actMark(g: Game, id: number, v: Verdict, emit: Sink): ActionResu
   if (!c) return fail('no-clue');
   if (c.verdict) { emit({ kind: 'toast', text: 'По этой находке уже есть заключение экспертизы' }); return fail('has-verdict'); }
   c.mark = c.mark === v ? null : v;
+  // Разобранная находка идёт в отчёт для жертвователей. Отклик даётся один раз и одинаково за
+  // 📌 и 🗑: платят за работу с находкой, а не за угадывание — иначе счётчик выдавал бы правду.
+  if (!c.rated) { c.rated = true; addXp(g, XP_MARK, emit); }
   return ok;
 }
 

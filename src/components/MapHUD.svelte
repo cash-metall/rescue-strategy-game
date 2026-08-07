@@ -36,8 +36,12 @@
   {/if}
 </div>
 
-<!-- ── Правая пилюля: фонд + шестерёнка ── -->
+<!-- ── Правая пилюля: отклик + фонд + шестерёнка ── -->
 <div class="pill right">
+  <span class="resp" title="Отклик: люди жертвуют, когда видят работу. Прочёсанные квадраты и разобранные находки приближают следующее пожертвование.">
+    📣<span class="bar rbar"><i style:width="{Math.min(100, (g.xp / g.xpNext) * 100)}%"></i></span>
+  </span>
+  <span class="sep">·</span>
   <span class="funds">₽&thinsp;{Math.floor(g.funds)}</span>
   <button class="gear" class:active={settingsOpen}
           onclick={() => { settingsOpen = !settingsOpen; }}
@@ -99,6 +103,9 @@
   .time { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
   .sep  { color: rgba(255,255,255,.3); font-size: 10px; }
   .funds { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  /* Отклик: узкая полоска прогресса до следующего пожертвования — источник денег виден рядом с ними */
+  .resp { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+  .resp :global(.rbar) { width: 34px; height: 5px; }
   .str  { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--green); }
   .str.warn { color: var(--amber); }
   .str.crit { color: var(--red); }
