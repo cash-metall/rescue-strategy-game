@@ -3,7 +3,7 @@
   import {
     TERR, TYPES, coordName, fmtDur, RECON_MIN,
     cellAt, inRange, detectEff, searchEst, planTrip, missionSlots, sendBlock,
-    available, freeWinds, lvl,
+    available, freeWinds, lvl, fatShown, fatLabel,
   } from '../engine';
   import Icon from './Icon.svelte';
 
@@ -57,6 +57,7 @@
           {@const est = u.type === 'drone' ? RECON_MIN : searchEst(g, u, cell)}
           {@const tired = u.type === 'drone' ? u.fatigue > 75 : u.fatigue >= 90}
           {@const off = tired || !!block}
+          {@const worn = u.type === 'drone' ? u.fatigue > 50 : u.fatigue > 70}
           <div class="urow" class:dis={off}>
             <label>
               <input type="checkbox" checked={g.ui.selUnits.has(u.id) && !off} disabled={off}
@@ -66,8 +67,8 @@
                 {#if block}⛔ {block}
                 {:else if tired}нужен отдых
                 {:else}
-                  качество {Math.round(detectEff(u) * 100)}% · путь ~{fmtDur(trip.travel)}
-                  {#if u.type === 'drone'}· съёмка {RECON_MIN} мин{:else}· осмотр ~{est === Infinity ? '—' : fmtDur(est)}{/if}
+                  качество {Math.round(detectEff(u) * 100)}% · <span class:warm={worn}>{fatLabel(u)} {fatShown(u)}%</span> · <span class:warm={worn && u.type !== 'drone'}>путь ~{fmtDur(trip.travel)}</span>
+                  {#if u.type === 'drone'}· съёмка {RECON_MIN} мин{:else}· <span class:warm={worn}>осмотр ~{est === Infinity ? '—' : fmtDur(est)}</span>{/if}
                 {/if}
               </span>
             </label>
@@ -96,4 +97,7 @@
 <style>
   .cellpanel { padding: 10px 12px; }
   .cellpanel h3 { font-size: 13px; color: var(--amber); margin-bottom: 6px; }
+  /* Усталость заметно бьёт по времени (у пеших/собак — ×1.25 к пути с 70%): подсвечиваем усталость,
+     путь и осмотр, чтобы было видно, что цифры уже раздуты усталостью, а не «базовые». */
+  .warm { color: var(--amber); }
 </style>
