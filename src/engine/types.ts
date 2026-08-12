@@ -200,9 +200,15 @@ export interface UiState {
   sel: Pt | null;
   selUnits: Set<number>;
   heat: boolean;
+  /** «Только важное» в журнале: прячет рутинные статусы отрядов (выехал/осмотр/вернулся). */
+  logImportant: boolean;
 }
 
-export interface LogLine { t: number; txt: string; cls?: string; }
+/**
+ * `routine` — рутинный статус движения отряда (выехал, начал осмотр, вернулся). Таких записей
+ * много; фильтр «только важное» в журнале их прячет, оставляя события и предупреждения.
+ */
+export interface LogLine { t: number; txt: string; cls?: string; routine?: boolean; }
 
 export interface Game {
   t: number;

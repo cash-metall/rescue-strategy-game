@@ -23,7 +23,7 @@ export function tryGen(camp: Campaign): Game | null {
     units: [], clues: [], sightings: [], log: [], nameCnt: { ...camp.nameCnt },
     expRuns: [], expQueue: [], objId: 1, clueId: 1, unitId: 1, sightId: 1,
     stats: { cluesTotal: 0, cluesReal: 0 },
-    ui: { tab: 'hq', sel: null, selUnits: new Set<number>(), heat: false },
+    ui: { tab: 'hq', sel: null, selUnits: new Set<number>(), heat: false, logImportant: false },
     map: [], profile: null as unknown as Profile, lkp: { x: 0, y: 0 }, path: [],
     trailSet: new Set<string>(), victim: { x: 0, y: 0, strength: 100, found: false },
     hq: { x: 0, y: 0 }, drainBase: 0,

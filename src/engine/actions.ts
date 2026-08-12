@@ -55,9 +55,9 @@ export function dispatchUnit(g: Game, u: Unit, cell: Cell, wind: Unit | null = n
     }
     const tail = trip.footMin > 0 ? `, дальше ${fmtDur(trip.footMin)} пешком` : '';
     // Имена отрядов не склоняем: строим фразу так, чтобы имя стояло в именительном.
-    pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выехала', 'выехал')} в кв. ${coordName(cell.x, cell.y)} — подвозит ${wind.name} (в пути ~${fmtDur(trip.travel)}${tail})`);
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выехала', 'выехал')} в кв. ${coordName(cell.x, cell.y)} — подвозит ${wind.name} (в пути ~${fmtDur(trip.travel)}${tail})`, undefined, true);
   } else {
-    pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выдвинулась', 'выдвинулся')} в кв. ${coordName(cell.x, cell.y)} (в пути ~${fmtDur(trip.travel)})`);
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'выдвинулась', 'выдвинулся')} в кв. ${coordName(cell.x, cell.y)} (в пути ~${fmtDur(trip.travel)})`, undefined, true);
   }
 }
 

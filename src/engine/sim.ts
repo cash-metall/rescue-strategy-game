@@ -36,8 +36,8 @@ export function setPhase(g: Game, u: Unit, status: UnitStatus, minutes: number, 
   m.pausedUntil = 0;
 }
 
-export function pushLog(g: Game, txt: string, cls?: string): void {
-  g.log.unshift({ t: g.t, txt, cls });
+export function pushLog(g: Game, txt: string, cls?: string, routine = false): void {
+  g.log.unshift({ t: g.t, txt, cls, routine });
   if (g.log.length > 250) g.log.pop();
 }
 
@@ -173,7 +173,7 @@ export function stepUnit(g: Game, u: Unit, emit: Sink): void {
       } else if (g.t >= u.phaseEnd) {
         if (u.type === 'wind') { windArrived(g, u, emit); break; }
         setPhase(g, u, 'search', u.type === 'drone' ? RECON_MIN : Math.min(24 * 60, m.estSearch));
-        pushLog(g, `${T.icon} ${u.name} ${gv(u, 'прибыла', 'прибыл')} в кв. ${coordName(m.x, m.y)}, ${u.type === 'drone' ? 'ведёт съёмку' : 'начат осмотр'}`);
+        pushLog(g, `${T.icon} ${u.name} ${gv(u, 'прибыла', 'прибыл')} в кв. ${coordName(m.x, m.y)}, ${u.type === 'drone' ? 'ведёт съёмку' : 'начат осмотр'}`, undefined, true);
       }
       break;
     }
@@ -230,7 +230,7 @@ function windGiveUp(g: Game, u: Unit, emit: Sink): void {
   const track = homeTrack(g, u);
   u.passengers = [];
   setPhase(g, u, 'return', back, track);
-  pushLog(g, `🚙 ${u.name}: подбирать некого, ${gv(u, 'развернулась', 'развернулся')} в лагерь`);
+  pushLog(g, `🚙 ${u.name}: подбирать некого, ${gv(u, 'развернулась', 'развернулся')} в лагерь`, undefined, true);
   emit({ kind: 'toast', text: `🚙 ${u.name}: подбирать некого` });
 }
 
@@ -289,7 +289,7 @@ function windArrived(g: Game, u: Unit, emit: Sink): void {
     r.u.mission!.aboard = true;
     const pts = withStart(r.from, findPath(g, r.at, g.hq, 'wind', u.level).cells);
     setPhase(g, r.u, 'return', returnMin, buildTrack(g, pts, 'wind'));
-    pushLog(g, `🚙 ${u.name} ${gv(u, 'забрала', 'забрал')} в кв. ${coordName(r.at.x, r.at.y)}: ${r.u.name}`);
+    pushLog(g, `🚙 ${u.name} ${gv(u, 'забрала', 'забрал')} в кв. ${coordName(r.at.x, r.at.y)}: ${r.u.name}`, undefined, true);
   }
 
   const carHome = withStart(trackEnd(m.track), findPath(g, { x: m.x, y: m.y }, g.hq, 'wind', u.level).cells);
@@ -508,8 +508,8 @@ export function forceReturn(g: Game, u: Unit, reason: ReturnReason, emit: Sink):
 
   if (reason === 'exhausted') { pushLog(g, `😮‍💨 ${u.name} ${gv(u, 'выбилась', 'выбился')} из сил и возвращается в лагерь`, 'warn'); emit({ kind: 'toast', text: `😮‍💨 ${u.name} возвращается: нет сил`, tone: 'bad' }); }
   else if (reason === 'battery') { pushLog(g, `🪫 ${u.name}: заряд на исходе, возврат на базу`, 'warn'); emit({ kind: 'toast', text: `🪫 ${u.name} возвращается: разряжен`, tone: 'bad' }); }
-  else if (reason === 'recall') { pushLog(g, `📻 ${u.name} ${gv(u, 'отозвана', 'отозван')} в лагерь по рации`); }
-  else if (reason === 'done') { pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'завершила', 'завершил')} работу в кв. ${coordName(m.x, m.y)} и возвращается`); }
+  else if (reason === 'recall') { pushLog(g, `📻 ${u.name} ${gv(u, 'отозвана', 'отозван')} в лагерь по рации`, undefined, true); }
+  else if (reason === 'done') { pushLog(g, `${TYPES[u.type].icon} ${u.name} ${gv(u, 'завершила', 'завершил')} работу в кв. ${coordName(m.x, m.y)} и возвращается`, undefined, true); }
 }
 
 /**
@@ -537,7 +537,7 @@ function tryPickup(g: Game, u: Unit, ret: number, _emit: Sink): boolean {
     };
     setPhase(g, w, 'travel', there);
     m.carrier = w.id;
-    pushLog(g, `🚙 ${w.name} выехал навстречу группе из кв. ${coordName(m.x, m.y)} (${u.name})`);
+    pushLog(g, `🚙 ${w.name} выехал навстречу группе из кв. ${coordName(m.x, m.y)} (${u.name})`, undefined, true);
 
     // Опытный водитель (ур. 2+) заодно подберёт вторую группу, если крюк невелик.
     // Время поездки от этого не растёт — крюк «бесплатен» (см. windArrived).
@@ -556,7 +556,7 @@ function tryPickup(g: Game, u: Unit, ret: number, _emit: Sink): boolean {
       if (bestU) {
         w.passengers.push(bestU.id);
         bestU.mission!.carrier = w.id;   // время не трогаем: тоже идёт пешком, пока не подберут
-        pushLog(g, `🚙 ${w.name} по дороге захватит и ${bestU.name} из кв. ${coordName(bestU.mission!.x, bestU.mission!.y)} (крюк ${bestDetour} мин)`);
+        pushLog(g, `🚙 ${w.name} по дороге захватит и ${bestU.name} из кв. ${coordName(bestU.mission!.x, bestU.mission!.y)} (крюк ${bestDetour} мин)`, undefined, true);
       }
     }
     return true;
@@ -571,7 +571,7 @@ export function arrive(g: Game, u: Unit, emit: Sink): void {
 
   if (u.type === 'wind') {
     u.passengers = [];
-    pushLog(g, `🚙 ${u.name} ${back} в лагерь`);
+    pushLog(g, `🚙 ${u.name} ${back} в лагерь`, undefined, true);
     return;
   }
 
@@ -579,15 +579,15 @@ export function arrive(g: Game, u: Unit, emit: Sink): void {
   if (found.length) {
     for (const o of found) createClue(g, u, o, m, !m.gps);
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back}: ${found.length} ${plural(found.length, 'находка', 'находки', 'находок')}`, tone: 'good' });
-    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, доставлено находок: ${found.length}`, 'good');
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, доставлено находок: ${found.length}`, 'good', true);
   } else if (g.buildings.radio >= RADIO_LIVE_LVL) {
     // Рация ур. ≥ 2: находки (если были) уже переданы по рации в поле, на возвращении их не
     // дублируем и не пишем «без находок» — просто отмечаем прибытие.
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back} в штаб` });
-    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере`);
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере`, undefined, true);
   } else {
     emit({ kind: 'toast', text: `${TYPES[u.type].icon} ${u.name} ${back} без находок` });
-    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, находок нет`);
+    pushLog(g, `${TYPES[u.type].icon} ${u.name} в лагере, находок нет`, undefined, true);
   }
 
   // травма — группа выбывает до конца дела
